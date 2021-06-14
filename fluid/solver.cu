@@ -35,9 +35,9 @@ void advect(float2 pos, float dt, float rpdx, float4 **u, float4 **x ,float4 **x
     float oldy = pos.y - dt * u[i][j].y * rpdx;
     
     float w = 1 / rpdx;
-    if (oldx > w-1) oldx = w-1;
+    if (oldx > w-2) oldx = w-2;
     if (oldx < 1) oldx = 1;
-    if (oldy > w-1) oldy = w-1;
+    if (oldy > w-2) oldy = w-2;
     if (oldy < 1) oldy = 1;
 
     float rdx = round(oldx);
