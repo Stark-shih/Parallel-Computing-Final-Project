@@ -9,21 +9,22 @@ void swap(float4 **field1, float4 **field2) {
     field2 = tmp;
 }
 
-void setBoundary(float4 **field, int w, int h) {
-    /* CLAMP to ZERO */
+void setBoundary(float4 **field, float sc, int w, int h) {
+    /* horizontal: the first line and the last line */
     for (int j=1; j<w-1; j++) {
-        field[0][j] = make_float4(0,0,0,0); // field[1][j];
-        field[h-1][j] = make_float4(0,0,0,0); // field[h-2][j];
+        field[0][j] = make_float4(sc*field[1][j].x, sc*field[1][j].y, sc*field[1][j].z, sc*field[1][j].w);
+        field[h-1][j] = make_float4(sc*field[h-2][j].x, sc*field[h-2][j].y, sc*field[h-2][j].z, sc*field[h-2][j].w);
     }
-    for (int i=1; i<h-1; i++) {
-        field[i][0] = make_float4(0,0,0,0); // field[i][1];
-        field[i][w-1] = make_float4(0,0,0,0); // field[i][w-2];
+    /* vetrtical */
+    for (int i=0; i<h; i++) {
+        field[i][0] = make_float4(sc*field[i][1].x, sc*field[i][1].y, sc*field[i][1].z, sc*field[i][1].w);
+        field[i][w-1] = make_float4(sc*field[i][w-2].x, sc*field[i][w-2].y, sc*field[i][w-2].z, sc*field[i][w-2].w);
     }
 
-    field[0][0] = make_float4(0,0,0,0); // (field[1][0] + field[0][1]) / 2;
-    field[0][w-1] = make_float4(0,0,0,0); // (field[w-2][0] + field[w-1][1]) / 2;
-    field[h-1][0] = make_float4(0,0,0,0); // (field[0][h-2] + field[1][h-1]) / 2;
-    field[h-1][w-1] = make_float4(0,0,0,0); // (field[w-2][h-1] + field[w-1][h-2]) / 2;
+    // field[0][0] = field[0][1];
+    // field[0][w-1] = field[0][w-2];
+    // field[h-1][0] = field[h-2][0];
+    // field[h-1][w-1] = field[h-2][w-1];
 }
 
 void advect(float2 pos, float dt, float rpdx, float4 **u, float4 **x ,float4 **xNew) {
@@ -158,6 +159,7 @@ void Solver::update(float dt, float2 forceOrigin, float2 forceVector) {
         }
     }
     swap(tmp, u);
+    setBoundary(u, -1.0f, gridSizeX, gridSizeY);
 
     // diffusion
     float alpha = dx * dx / (viscosity * dt);
@@ -170,6 +172,7 @@ void Solver::update(float dt, float2 forceOrigin, float2 forceVector) {
             }
         }
         swap(tmp, u);
+        setBoundary(u, -1.0f, gridSizeX, gridSizeY);
     }
 
     // external force
@@ -180,6 +183,7 @@ void Solver::update(float dt, float2 forceOrigin, float2 forceVector) {
         }
     }
     swap(tmp, u);
+    setBoundary(u, -1.0f, gridSizeX, gridSizeY);
     
     // projection step: divergence + pressure
     // divergence
@@ -202,6 +206,7 @@ void Solver::update(float dt, float2 forceOrigin, float2 forceVector) {
             }
         }
         swap(tmp, p);
+        setBoundary(p, 1.0f, gridSizeX, gridSizeY);
     }
     
 
@@ -213,6 +218,7 @@ void Solver::update(float dt, float2 forceOrigin, float2 forceVector) {
         }
     }
     swap(tmp, u);
+    setBoundary(u, -1.0f, gridSizeX, gridSizeY);
 
     // TODO: apply color
 }
