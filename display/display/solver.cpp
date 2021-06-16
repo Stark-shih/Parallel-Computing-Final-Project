@@ -252,8 +252,8 @@ void Solver::update(float dt, float2 forceOrigin, float2 forceVector, sf::Uint8*
             pixels[(i * gridSizeX + j) * 4] = 138;
             pixels[(i * gridSizeX + j) * 4 + 1] = 43;
             pixels[(i * gridSizeX + j) * 4 + 2] = 226;
-            float amp = sqrtf(u[i][j].x * u[i][j].x + u[i][j].y * u[i][j].y);
-            if (amp > 0) pixels[(i * gridSizeX + j) * 4 + 3] = 255;
+            float amp = sqrtf(u[i][j].x * u[i][j].x + u[i][j].y * u[i][j].y)*150;
+            if (amp > 255) pixels[(i * gridSizeX + j) * 4 + 3] = 255;
             else pixels[(i * gridSizeX + j) * 4 + 3] = (int) amp;
             //            std::cout << amp << ", ";
         }
