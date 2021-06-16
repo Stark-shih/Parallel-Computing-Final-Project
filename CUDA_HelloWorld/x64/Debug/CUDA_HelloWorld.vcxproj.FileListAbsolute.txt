@@ -1,1 +1,0 @@
-C:\Users\史孟玄\OneDrive\文件\大四\Parallel Computing\Parallel-Computing-Final-Project\CUDA_HelloWorld\x64\Debug\CUDA_HelloWorld.exe
