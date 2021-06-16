@@ -24,7 +24,7 @@ void draw_mouse(Uint8 * pixels, int W, int mouse_x, int mouse_y) {
 
 int main()
 {
-    int W = 512, H = 512;
+    int W = 150, H = 150;
     RenderWindow window(VideoMode(W, H), "test");
     //window.setFramerateLimit(60);
 
@@ -41,8 +41,13 @@ int main()
 
     Clock clock;
     Time t;
-    Vector2i mouse_pos;
+    Vector2i mouse_pos, old_pos;
+    float2 forceVector = make_float2(0,0);
+    float2 forceOrigin = make_float2(0,0);
     bool move_flag = false;
+    Solver stableSolver(W, H, W);
+    stableSolver.reset();
+    float  timestep = 0.1;
     while (window.isOpen())
     {
         //Vector2i localPosition = sf::Mouse::getPosition(window);
@@ -53,28 +58,56 @@ int main()
                 case Event::Closed:
                     window.close();
                     break;
-                case Event::MouseMoved:
+                case Event::Event::MouseButtonReleased:
                     move_flag = true;
-                    mouse_pos.x = event.mouseMove.x;
-                    mouse_pos.y = event.mouseMove.y;
+                    mouse_pos.x = event.mouseButton.x;
+                    mouse_pos.y = event.mouseButton.y;
+                    std::cout << "moouse up " << mouse_pos.x << ", " << mouse_pos.y << "\n";
                     break;
+                case Event::MouseButtonPressed:
+                    old_pos.x = event.mouseButton.x;
+                    old_pos.y = event.mouseButton.y;
+                    std::cout << "moouse down " << old_pos.x << ", " << old_pos.y << "\n";
+                    break;
+
                 default:
                     break;
             }
 
         }
 
-        for (register int i = 0; i < W * H * 4; i += 4) {
-            if (pixels[i] > 0) {
-                pixels[i] = std::max((int)pixels[i]-1, 0);
-                pixels[i + 1] = std::max((int)pixels[i]-1, 0);
-                pixels[i + 2] = std::max((int)pixels[i]-1, 0);
-            }
-            //pixels[i + 3];
+//        for (register int i = 0; i < W * H * 4; i += 4) {
+//            if (pixels[i] > 0) {
+//                pixels[i] = std::max((int)pixels[i]-1, 0);
+//                pixels[i + 1] = std::max((int)pixels[i]-1, 0);
+//                pixels[i + 2] = std::max((int)pixels[i]-1, 0);
+//            }
+//            //pixels[i + 3];
+//        }
+        if(move_flag) {
+            forceOrigin = make_float2(old_pos.x, old_pos.y);
+            forceVector = make_float2(mouse_pos.x - old_pos.x, mouse_pos.y - old_pos.y);
+//            draw_mouse(pixels, W, mouse_pos.x, mouse_pos.y);
+            move_flag = false;
+//            float elapsed = clock.getElapsedTime().asSeconds();
+//            if (elapsed > timestep) {
+//                stableSolver.update(timestep, forceOrigin, forceVector, pixels);
+//                elapsed -= timestep;
+//                forceVector = make_float2(0,0);
+//                forceOrigin = make_float2(0,0);
+//                clock.restart();
+//            }
         }
-        if(move_flag)
-            draw_mouse(pixels, W, mouse_pos.x, mouse_pos.y);
-        move_flag = false;
+        float elapsed = clock.getElapsedTime().asSeconds();
+        while (elapsed > timestep) {
+            stableSolver.update(timestep, forceOrigin, forceVector, pixels);
+            elapsed -= timestep;
+            forceVector = make_float2(0,0);
+            forceOrigin = make_float2(0,0);
+            clock.restart();
+        }
+
+
         texture.update(pixels);
         window.clear();
         window.draw(sprite);

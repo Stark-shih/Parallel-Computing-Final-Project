@@ -1,5 +1,7 @@
 #include <cmath>
+#include <iostream>
 #include <assert.h>
+#include <iomanip>
 #include "solver.h"
 
 float4 make_float4(float x, float y, float z, float w) {
@@ -18,10 +20,14 @@ float2 make_float2(float x, float y) {
     return tmp;
 }
 
-void swap(float4 **field1, float4 **field2) {
-    float4 **tmp = field1;
-    field1 = field2;
-    field2 = tmp;
+void Solver::swap(float4 **field1, float4 **field2) {
+    for (int i = 0; i < gridSizeY; i++) {
+        for (int j = 0; j < gridSizeX; j++) {
+            float4 tmp = field1[i][j];
+            field1[i][j] = field2[i][j];
+            field2[i][j] = tmp;
+        }
+    }
 }
 
 void setBoundary(float4 **field, float sc, int w, int h) {
@@ -55,20 +61,24 @@ void advect(float2 pos, float dt, float rpdx, float4 **u, float4 **x ,float4 **x
     if (oldy > w-2) oldy = w-2;
     if (oldy < 1) oldy = 1;
 
-    float rdx = round(oldx);
-    float rdy = round(oldy);
-    float a = oldy - (rdy - 0.5);
-    float b = oldx - (rdx - 0.5);
-    float a_ = 1.0;
-    float b_ = 1.0;
-
-    int i1 = (int) (rdy + 0.5);
-    int j1 = (int) (rdx + 0.5);
-    int i0 = i1 - 1;
-    int j0 = j1 - 1;
-
-    xNew[i][j].x = (a_-a)*(b_-b)*x[i0][j0].x + (a_-a)*b*x[i0][j1].x + a*(b_-b)*x[i1][j0].x + a*b*x[i1][j1].x;
-    xNew[i][j].y = (a_-a)*(b_-b)*x[i0][j0].y + (a_-a)*b*x[i0][j1].y + a*(b_-b)*x[i1][j0].y + a*b*x[i1][j1].y;
+    int oj = (int) oldx;
+    int oi = (int) oldy;
+    xNew[i][j].x = (u[oi][oj+1].x + u[oi][oj-1].x + u[oi+1][oj].x + u[oi-1][oj].x) / 4;
+    xNew[i][j].y = (u[oi][oj+1].y + u[oi][oj-1].y + u[oi+1][oj].y + u[oi-1][oj].y) / 4;
+//    float rdx = round(oldx);
+//    float rdy = round(oldy);
+//    float a = oldy - (rdy - 0.5);
+//    float b = oldx - (rdx - 0.5);
+//    float a_ = 1.0;
+//    float b_ = 1.0;
+//
+//    int i1 = (int) (rdy + 0.5);
+//    int j1 = (int) (rdx + 0.5);
+//    int i0 = i1 - 1;
+//    int j0 = j1 - 1;
+//
+//    xNew[i][j].x = (a_-a)*(b_-b)*x[i0][j0].x + (a_-a)*b*x[i0][j1].x + a*(b_-b)*x[i1][j0].x + a*b*x[i1][j1].x;
+//    xNew[i][j].y = (a_-a)*(b_-b)*x[i0][j0].y + (a_-a)*b*x[i0][j1].y + a*(b_-b)*x[i1][j0].y + a*b*x[i1][j1].y;
 
 }
 
@@ -101,12 +111,12 @@ void divergence(float2 pos, float halfrdx, float4 **w, float4 **div) {
     int i = (int)pos.y;
     int j = (int)pos.x;
 
-    float4 wL = w[i][j-1];
-    float4 wR = w[i][j+1];
-    float4 wT = w[i-1][j];
-    float4 wB = w[i+1][j];
+    float wL = w[i][j-1].x;
+    float wR = w[i][j+1].x;
+    float wT = w[i-1][j].y;
+    float wB = w[i+1][j].y;
 
-    div[i][j].w = halfrdx * ((wR.x - wL.x) + (wT.y - wB.y));
+    div[i][j].w = halfrdx * ((wR - wL) + (wT - wB));
 }
 
 void subgradient(float2 pos, float halfrdx, float4 **p, float4 **w, float4 **uNew) {
@@ -160,21 +170,32 @@ void Solver::reset() {
 
     this->p = (float4**) malloc(gridSizeY * sizeof(float4*));
     for (int i=0; i<gridSizeY; i++) {
-        p[i] = (float4*) calloc(0, gridSizeX * sizeof(float4));
+        p[i] = (float4*) malloc(gridSizeX * sizeof(float4));
     }
 }
 
-void Solver::update(float dt, float2 forceOrigin, float2 forceVector) {
+void Solver::update(float dt, float2 forceOrigin, float2 forceVector, sf::Uint8 *pixels) {
+
+    // external force
+    for (int i=1; i<gridSizeY-1; i++) {
+        for (int j=1; j<gridSizeX-1; j++) {
+            float2 pos = make_float2(i+0.5, j+0.5);
+            addForce(pos, forceOrigin, forceVector, u, tmp);
+        }
+    }
+    swap(tmp, u);
+    setBoundary(u, -1.0f, gridSizeX, gridSizeY);
 
     // advect
     for (int i=1; i<gridSizeY-1; i++) {
         for (int j=1; j<gridSizeX-1; j++) {
             float2 pos = make_float2(i+0.5, j+0.5);
-            advect(pos, dt, 1/dx, u, u, tmp);
+            advect(pos, dt, dx, u, u, tmp);
         }
     }
     swap(tmp, u);
     setBoundary(u, -1.0f, gridSizeX, gridSizeY);
+
 
     // diffusion
     float alpha = dx * dx / (viscosity * dt);
@@ -190,18 +211,8 @@ void Solver::update(float dt, float2 forceOrigin, float2 forceVector) {
         setBoundary(u, -1.0f, gridSizeX, gridSizeY);
     }
 
-    // external force
-    for (int i=1; i<gridSizeY-1; i++) {
-        for (int j=1; j<gridSizeX-1; j++) {
-            float2 pos = make_float2(i+0.5, j+0.5);
-            addForce(pos, forceOrigin, forceVector, u, tmp);
-        }
-    }
-    swap(tmp, u);
-    setBoundary(u, -1.0f, gridSizeX, gridSizeY);
-
     // projection step: divergence + pressure
-    // divergence
+    // divergence bug
     for (int i=1; i<gridSizeY-1; i++) {
         for (int j=1; j<gridSizeX-1; j++) {
             float2 pos = make_float2(i+0.5, j+0.5);
@@ -236,4 +247,26 @@ void Solver::update(float dt, float2 forceOrigin, float2 forceVector) {
     setBoundary(u, -1.0f, gridSizeX, gridSizeY);
 
     // TODO: apply color
+    for (int i = 0; i < gridSizeY; i++) {
+        for (int j = 0; j < gridSizeX; j++) {
+            pixels[(i*gridSizeX + j) * 4] = 138;
+            pixels[(i*gridSizeX + j) * 4+1] = 43;
+            pixels[(i*gridSizeX + j) * 4+2] = 226;
+            float amp = sqrtf(u[i][j].x*u[i][j].x + u[i][j].y*u[i][j].y);
+            if (amp > 0) pixels[(i*gridSizeX + j) * 4+3] = 255;
+            else pixels[(i*gridSizeX + j) * 4+3] = (int) amp;
+//            std::cout << amp << ", ";
+        }
+//        std::cout << "\n";
+    }
+}
+
+void Solver::print(float4 **matrix) {
+    for (int i = 0; i < gridSizeY; i++) {
+        for (int j = 0; j < gridSizeX; j++) {
+            float amp = sqrtf(matrix[i][j].x*matrix[i][j].x + matrix[i][j].y*matrix[i][j].y);
+            std::cout << std::fixed << std::setprecision(0) << amp;
+        }
+        std::cout << "\n";
+    }
 }
