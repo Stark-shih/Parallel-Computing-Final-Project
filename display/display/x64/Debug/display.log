@@ -20,20 +20,4 @@ C:\Users\史孟玄\OneDrive\文件\大四\Parallel Computing\Parallel-Computing-
           [
               T=int
           ]
-  solver.cpp
-C:\Users\史孟玄\OneDrive\文件\大四\Parallel Computing\Parallel-Computing-Final-Project\display\display\solver.cpp(161,49): warning C4244: '引數': 將 'double' 轉換為 'float'，由於類型不同，可能導致資料遺失
-C:\Users\史孟玄\OneDrive\文件\大四\Parallel Computing\Parallel-Computing-Final-Project\display\display\solver.cpp(161,40): warning C4244: '引數': 將 'double' 轉換為 'float'，由於類型不同，可能導致資料遺失
-C:\Users\史孟玄\OneDrive\文件\大四\Parallel Computing\Parallel-Computing-Final-Project\display\display\solver.cpp(171,49): warning C4244: '引數': 將 'double' 轉換為 'float'，由於類型不同，可能導致資料遺失
-C:\Users\史孟玄\OneDrive\文件\大四\Parallel Computing\Parallel-Computing-Final-Project\display\display\solver.cpp(171,40): warning C4244: '引數': 將 'double' 轉換為 'float'，由於類型不同，可能導致資料遺失
-C:\Users\史孟玄\OneDrive\文件\大四\Parallel Computing\Parallel-Computing-Final-Project\display\display\solver.cpp(185,53): warning C4244: '引數': 將 'double' 轉換為 'float'，由於類型不同，可能導致資料遺失
-C:\Users\史孟玄\OneDrive\文件\大四\Parallel Computing\Parallel-Computing-Final-Project\display\display\solver.cpp(185,44): warning C4244: '引數': 將 'double' 轉換為 'float'，由於類型不同，可能導致資料遺失
-C:\Users\史孟玄\OneDrive\文件\大四\Parallel Computing\Parallel-Computing-Final-Project\display\display\solver.cpp(197,49): warning C4244: '引數': 將 'double' 轉換為 'float'，由於類型不同，可能導致資料遺失
-C:\Users\史孟玄\OneDrive\文件\大四\Parallel Computing\Parallel-Computing-Final-Project\display\display\solver.cpp(197,40): warning C4244: '引數': 將 'double' 轉換為 'float'，由於類型不同，可能導致資料遺失
-C:\Users\史孟玄\OneDrive\文件\大四\Parallel Computing\Parallel-Computing-Final-Project\display\display\solver.cpp(198,33): warning C4244: '引數': 將 'double' 轉換為 'float'，由於類型不同，可能導致資料遺失
-C:\Users\史孟玄\OneDrive\文件\大四\Parallel Computing\Parallel-Computing-Final-Project\display\display\solver.cpp(209,53): warning C4244: '引數': 將 'double' 轉換為 'float'，由於類型不同，可能導致資料遺失
-C:\Users\史孟玄\OneDrive\文件\大四\Parallel Computing\Parallel-Computing-Final-Project\display\display\solver.cpp(209,44): warning C4244: '引數': 將 'double' 轉換為 'float'，由於類型不同，可能導致資料遺失
-C:\Users\史孟玄\OneDrive\文件\大四\Parallel Computing\Parallel-Computing-Final-Project\display\display\solver.cpp(221,49): warning C4244: '引數': 將 'double' 轉換為 'float'，由於類型不同，可能導致資料遺失
-C:\Users\史孟玄\OneDrive\文件\大四\Parallel Computing\Parallel-Computing-Final-Project\display\display\solver.cpp(221,40): warning C4244: '引數': 將 'double' 轉換為 'float'，由於類型不同，可能導致資料遺失
-C:\Users\史孟玄\OneDrive\文件\大四\Parallel Computing\Parallel-Computing-Final-Project\display\display\solver.cpp(222,34): warning C4244: '引數': 將 'double' 轉換為 'float'，由於類型不同，可能導致資料遺失
-  正在產生程式碼...
   display.vcxproj -> C:\Users\史孟玄\OneDrive\文件\大四\Parallel Computing\Parallel-Computing-Final-Project\display\x64\Debug\display.exe
