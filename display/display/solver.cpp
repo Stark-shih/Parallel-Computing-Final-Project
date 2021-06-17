@@ -21,12 +21,11 @@ float2 make_float2(float x, float y) {
 }
 
 void Solver::swap(float4** field1, float4** field2) {
+    float4* tmp;
     for (int i = 0; i < gridSizeY; i++) {
-        for (int j = 0; j < gridSizeX; j++) {
-            float4 tmp = field1[i][j];
-            field1[i][j] = field2[i][j];
-            field2[i][j] = tmp;
-        }
+        tmp = field1[i];
+        field1[i] = field2[i];
+        field2[i] = tmp;
     }
 }
 
@@ -41,14 +40,9 @@ void setBoundary(float4** field, float sc, int w, int h) {
         field[i][0] = make_float4(sc * field[i][1].x, sc * field[i][1].y, sc * field[i][1].z, sc * field[i][1].w);
         field[i][w - 1] = make_float4(sc * field[i][w - 2].x, sc * field[i][w - 2].y, sc * field[i][w - 2].z, sc * field[i][w - 2].w);
     }
-
-    // field[0][0] = field[0][1];
-    // field[0][w-1] = field[0][w-2];
-    // field[h-1][0] = field[h-2][0];
-    // field[h-1][w-1] = field[h-2][w-1];
 }
 
-void advect(float2 pos, float dt, float rpdx, float4** u, float4** x, float4** xNew) {
+void advect(float2 pos, float dt, float rpdx, float4** u, float4** xNew) {
     int i = (int)pos.y;
     int j = (int)pos.x;
 
@@ -65,21 +59,6 @@ void advect(float2 pos, float dt, float rpdx, float4** u, float4** x, float4** x
     int oi = (int)oldy;
     xNew[i][j].x = (u[oi][oj + 1].x + u[oi][oj - 1].x + u[oi + 1][oj].x + u[oi - 1][oj].x) / 4;
     xNew[i][j].y = (u[oi][oj + 1].y + u[oi][oj - 1].y + u[oi + 1][oj].y + u[oi - 1][oj].y) / 4;
-    //    float rdx = round(oldx);
-    //    float rdy = round(oldy);
-    //    float a = oldy - (rdy - 0.5);
-    //    float b = oldx - (rdx - 0.5);
-    //    float a_ = 1.0;
-    //    float b_ = 1.0;
-    //
-    //    int i1 = (int) (rdy + 0.5);
-    //    int j1 = (int) (rdx + 0.5);
-    //    int i0 = i1 - 1;
-    //    int j0 = j1 - 1;
-    //
-    //    xNew[i][j].x = (a_-a)*(b_-b)*x[i0][j0].x + (a_-a)*b*x[i0][j1].x + a*(b_-b)*x[i1][j0].x + a*b*x[i1][j1].x;
-    //    xNew[i][j].y = (a_-a)*(b_-b)*x[i0][j0].y + (a_-a)*b*x[i0][j1].y + a*(b_-b)*x[i1][j0].y + a*b*x[i1][j1].y;
-
 }
 
 void jacobi(float2 pos, float alpha, float rbeta, float4** x, float4** b, float4** xNew) {
@@ -190,7 +169,7 @@ void Solver::update(float dt, float2 forceOrigin, float2 forceVector, sf::Uint8*
     for (int i = 1; i < gridSizeY - 1; i++) {
         for (int j = 1; j < gridSizeX - 1; j++) {
             float2 pos = make_float2(i + 0.5, j + 0.5);
-            advect(pos, dt, dx, u, u, tmp);
+            advect(pos, dt, dx, u, tmp);
         }
     }
     swap(tmp, u);
@@ -255,9 +234,7 @@ void Solver::update(float dt, float2 forceOrigin, float2 forceVector, sf::Uint8*
             float amp = sqrtf(u[i][j].x * u[i][j].x + u[i][j].y * u[i][j].y)*150;
             if (amp > 255) pixels[(i * gridSizeX + j) * 4 + 3] = 255;
             else pixels[(i * gridSizeX + j) * 4 + 3] = (int) amp;
-            //            std::cout << amp << ", ";
         }
-        //        std::cout << "\n";
     }
 }
 

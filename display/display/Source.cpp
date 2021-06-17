@@ -6,7 +6,7 @@ using namespace sf;
 
 int main()
 {
-    int W = 300, H = 300;
+    int W = 200, H = 200;
     RenderWindow window(VideoMode(W, H), "test");
     //window.setFramerateLimit(60);
 
