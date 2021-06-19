@@ -45,44 +45,6 @@ public:
     void print(float4* matrix);
 };
 //solver.cpp
-
-//todo
-void addForce(float2 pos, float2 forceOrigin, float2 forceVector, float4* w_in, float4* w_out, int wid) {
-    int i = (int)pos.y;
-    int j = (int)pos.x;
-    float distance = sqrtf((pos.x - forceOrigin.x) * (pos.x - forceOrigin.x) + (pos.y - forceOrigin.y) * (pos.y - forceOrigin.y));
-    float amp = exp(-distance);
-
-    w_out[i * wid + j].x = w_in[i * wid + j].x + forceVector.x * amp;
-    w_out[i * wid + j].y = w_in[i * wid + j].y + forceVector.y * amp;
-}
-
-void divergence(float2 pos, float halfrdx, float4* w, float4* div, int wid) {
-    int i = (int)pos.y;
-    int j = (int)pos.x;
-
-    float wL = w[i * wid + j - 1].x;
-    float wR = w[i * wid + j + 1].x;
-    float wT = w[(i - 1) * wid + j].y;
-    float wB = w[(i + 1) * wid + j].y;
-
-    div[i * wid + j].w = halfrdx * ((wR - wL) + (wT - wB));
-}
-
-void subgradient(float2 pos, float halfrdx, float4* p, float4* w, float4* uNew, int wid) {
-    int i = (int)pos.y;
-    int j = (int)pos.x;
-
-    float4 pL = p[i * wid + j - 1];
-    float4 pR = p[i * wid + j + 1];
-    float4 pT = p[(i - 1) * wid + j];
-    float4 pB = p[(i + 1) * wid + j];
-
-    uNew[i * wid + j] = w[i * wid + j];
-    uNew[i * wid + j].x -= halfrdx * (pR.w - pL.w);
-    uNew[i * wid + j].y -= halfrdx * (pB.w - pT.w);
-}
-//fin
 Solver::Solver(int screenWidth, int screenHeight, int resolution)
 {
     assert((resolution * screenHeight) % screenWidth == 0);
@@ -114,6 +76,11 @@ void Solver::reset() {
     cudaMallocManaged(&(this->tmp), gridSizeY * gridSizeX * sizeof(float4));
     cudaMallocManaged(&(this->div), gridSizeY * gridSizeX * sizeof(float4));
     cudaMallocManaged(&(this->p), gridSizeY * gridSizeX * sizeof(float4));
+
+    cudaMemset(this->u, 0, 1000 * gridSizeY * gridSizeX * sizeof(float4));
+    cudaMemset(this->tmp, 0, 1000 * gridSizeY * gridSizeX * sizeof(float4));
+    cudaMemset(this->div, 0, 1000 * gridSizeY * gridSizeX * sizeof(float4));
+    cudaMemset(this->p, 0, 1000 * gridSizeY * gridSizeX * sizeof(float4));
 }
 void swap(float4*& field1, float4*& field2) {
     float4* temp = field1;
@@ -152,6 +119,7 @@ void cuda_addForce(int gridSizeX, int gridSizeY, float2 forceOrigin, float2 forc
         w_out[a * gridSizeX + b].y = w_in[a * gridSizeX + b].y + forceVector.y * amp;
     }
 }
+//這個點的速度應該要到下一個位置去
 __global__
 void cuda_advect(int gridSizeX, int gridSizeY, float dt, float rpdx, float4* u, float4* x, float4* xNew) {
     int index = threadIdx.x + blockIdx.x * blockDim.x;
@@ -198,67 +166,82 @@ void cuda_jacobi(int gridSizeX, int gridSizeY,  float alpha, float rbeta, float4
         xNew[a * gridSizeX + b].w = (xL.w + xR.w + xT.w + xB.w + bb[a * gridSizeX + b].w * alpha) * rbeta;
     }
 }
+__global__
+void cuda_divergence(int gridSizeX, int gridSizeY, float halfrdx, float4* w, float4* div) {//gridSizeX, gridSizeY, 0.5 / dx, u, div
+    int index = threadIdx.x + blockIdx.x * blockDim.x;
+    int stride = blockDim.x * gridDim.x;
+    for (int i = index; i < gridSizeY * gridSizeX; i += stride) {
+        int a = i / gridSizeX;
+        int b = i - a * gridSizeX;
+        if (a == 0 || a == gridSizeY - 1 || b == 0 || b == gridSizeX - 1) continue;
+        float2 pos = make_float2(a + 0.5, b + 0.5);
+        a = (int)pos.x;
+        b = (int)pos.y;
+
+        float wL = w[a * gridSizeX + b - 1].x;
+        float wR = w[a * gridSizeX + b + 1].x;
+        float wT = w[(a - 1) * gridSizeX + b].y;
+        float wB = w[(a + 1) * gridSizeX + b].y;
+        div[a * gridSizeX + b].w = halfrdx * ((wR - wL) + (wT - wB));
+    }
+}
+__global__
+void cuda_subgradient(int gridSizeX, int gridSizeY, float halfrdx, float4* p, float4* w, float4* uNew) {//gridSizeX, gridSizeY, 0.5 / dx, p, u, tmp
+    int index = threadIdx.x + blockIdx.x * blockDim.x;
+    int stride = blockDim.x * gridDim.x;
+    for (int i = index; i < gridSizeY * gridSizeX; i += stride) {
+        int a = i / gridSizeX;
+        int b = i - a * gridSizeX;
+        if (a == 0 || a == gridSizeY - 1 || b == 0 || b == gridSizeX - 1) continue;
+        float2 pos = make_float2(a + 0.5, b + 0.5);
+        a = (int)pos.x;
+        b = (int)pos.y;
+
+        float4 pL = p[a * gridSizeX + b - 1];
+        float4 pR = p[a * gridSizeX + b + 1];
+        float4 pT = p[(a - 1) * gridSizeX + b];
+        float4 pB = p[(a + 1) * gridSizeX + b];
+
+        uNew[a * gridSizeX + b] = w[a * gridSizeX + b];
+        uNew[a * gridSizeX + b].x -= halfrdx * (pR.w - pL.w);
+        uNew[a * gridSizeX + b].y -= halfrdx * (pB.w - pT.w);
+    }
+}
 void Solver::update(float dt, float2 forceOrigin, float2 forceVector, Uint8* pixels) {
 
     // external force
     cuda_addForce<<<numberofblocks, numberofthreads>>>(gridSizeX, gridSizeY, forceOrigin, forceVector, u, tmp);
     swap(tmp, u);
     setBoundary<<<numberofblocks, numberofthreads >>>(u, -1.0f, gridSizeX, gridSizeY);
-
     // advect
     cuda_advect<<<numberofblocks, numberofthreads >>>(gridSizeX, gridSizeY, dt, dx, u, u, tmp);
     swap(tmp, u);
     setBoundary << <numberofblocks, numberofthreads >> > (u, -1.0f, gridSizeX, gridSizeY);
-
-    //// diffusion
+    // diffusion
     float alpha = dx * dx / (viscosity * dt);
     float rBeta = 1 / (4 + alpha);
     for (int s = 0; s < 20; s++) {
-        //for (int i = 1; i < gridSizeY - 1; i++) {
-        //    for (int j = 1; j < gridSizeX - 1; j++) {
-        //        float2 pos = make_float2(i + 0.5, j + 0.5);
-        //        jacobi(pos, alpha, rBeta, u, u, tmp, gridSizeX);
-        //    }
-        //}
         cuda_jacobi << <numberofblocks, numberofthreads >> > (gridSizeX, gridSizeY, alpha, rBeta, u, u, tmp);
         swap(tmp, u);
         setBoundary << <numberofblocks, numberofthreads >> > (u, -1.0f, gridSizeX, gridSizeY);
     }
-
-    //// projection step: divergence + pressure
-    //// divergence bug
-    //for (int i = 1; i < gridSizeY - 1; i++) {
-    //    for (int j = 1; j < gridSizeX - 1; j++) {
-    //        float2 pos = make_float2(i + 0.5, j + 0.5);
-    //        divergence(pos, 0.5 / dx, u, div, gridSizeX);
-    //        p[i * gridSizeX + j] = make_float4(0, 0, 0, 0);
-    //    }
-    //}
-
-    //// pressure
-    //alpha = -dx * dx;
-    //rBeta = 1 / 4;
-    //for (int s = 0; s < 20; s++) {
-    //    for (int i = 1; i < gridSizeY - 1; i++) {
-    //        for (int j = 1; j < gridSizeX - 1; j++) {
-    //            float2 pos = make_float2(i + 0.5, j + 0.5);
-    //            jacobi(pos, alpha, rBeta, p, div, tmp, gridSizeX);
-    //        }
-    //    }
-    //    swap << <1, 1 >> > (tmp, p);
-    //    setBoundary(p, 1.0f, gridSizeX, gridSizeY);
-    //}
-
-
-    //// subGradient
-    //for (int i = 1; i < gridSizeY - 1; i++) {
-    //    for (int j = 1; j < gridSizeX - 1; j++) {
-    //        float2 pos = make_float2(i + 0.5, j + 0.5);
-    //        subgradient(pos, 0.5 / dx, p, u, tmp, gridSizeX);
-    //    }
-    //}
-    //swap << <1, 1 >> > (tmp, u);
-    //setBoundary(u, -1.0f, gridSizeX, gridSizeY);
+    /*------------------------------------------------------------------------------------------------------------*/
+    // projection step: divergence + pressure
+    //divergence
+    cuda_divergence << <numberofblocks, numberofthreads >> > (gridSizeX, gridSizeY, 0.5 / dx, u, div); // u -> div
+    // pressure
+    alpha = -dx * dx;
+    rBeta = 1 / 4;
+    for (int s = 0; s < 20; s++) {
+        cuda_jacobi << <numberofblocks, numberofthreads >> > (gridSizeX, gridSizeY, alpha, rBeta, p, div, tmp); //div -> tmp
+        swap(tmp, p);
+        setBoundary << <numberofblocks, numberofthreads >> > (p, 1.0f, gridSizeX, gridSizeY);
+    }
+    // subGradient
+    cuda_subgradient << <numberofblocks, numberofthreads >> > (gridSizeX, gridSizeY, 0.5 / dx, p, u, tmp);
+    swap(tmp, u);
+    setBoundary << <numberofblocks, numberofthreads >> > (u, -1.0f, gridSizeX, gridSizeY);
+    //finish
     cudaDeviceSynchronize();
     // apply color
     for (int i = 0; i < gridSizeY; i++) {
@@ -285,7 +268,7 @@ void Solver::print(float4* matrix) {
 //main.cpp
 int main()
 {
-    int W = 400, H = 400;
+    int W = 300, H = 300;
     RenderWindow window(VideoMode(W, H), "test");
     //window.setFramerateLimit(60);
 
@@ -308,7 +291,7 @@ int main()
     bool click_flag = false;
     Solver stableSolver(W, H, W);
     stableSolver.reset();
-    float  timestep = 0.01;
+    float  timestep = 0.05;
     while (window.isOpen())
     {
         Event event;
