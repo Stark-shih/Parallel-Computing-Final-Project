@@ -40,7 +40,7 @@ public:
     Solver(int width, int height, int resolution);
     ~Solver();
     void reset();
-    void update(float dt, float2 forceOrigin, float2 forceVector, sf::Uint8 *pixels);
+    void update(float dt, float2 forceOrigin, float2 forceVector, sf::Uint8 *pixels, bool move_flag);
     void print(float4 **matrix);
     void swap(float4 **field1, float4 **field2);
 };

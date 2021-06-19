@@ -61,24 +61,19 @@ void advect(float2 pos, float dt, float rpdx, float4 **u, float4 **x ,float4 **x
     if (oldy > w-2) oldy = w-2;
     if (oldy < 1) oldy = 1;
 
-    int oj = (int) oldx;
-    int oi = (int) oldy;
-    xNew[i][j].x = (u[oi][oj+1].x + u[oi][oj-1].x + u[oi+1][oj].x + u[oi-1][oj].x) / 4;
-    xNew[i][j].y = (u[oi][oj+1].y + u[oi][oj-1].y + u[oi+1][oj].y + u[oi-1][oj].y) / 4;
-//    float rdx = round(oldx);
-//    float rdy = round(oldy);
-//    float a = oldy - (rdy - 0.5);
-//    float b = oldx - (rdx - 0.5);
-//    float a_ = 1.0;
-//    float b_ = 1.0;
-//
-//    int i1 = (int) (rdy + 0.5);
-//    int j1 = (int) (rdx + 0.5);
-//    int i0 = i1 - 1;
-//    int j0 = j1 - 1;
-//
-//    xNew[i][j].x = (a_-a)*(b_-b)*x[i0][j0].x + (a_-a)*b*x[i0][j1].x + a*(b_-b)*x[i1][j0].x + a*b*x[i1][j1].x;
-//    xNew[i][j].y = (a_-a)*(b_-b)*x[i0][j0].y + (a_-a)*b*x[i0][j1].y + a*(b_-b)*x[i1][j0].y + a*b*x[i1][j1].y;
+    int xId0 = (int)oldx;
+    int xId1 = xId0 + 1;
+    int yId0 = (int)oldy;
+    int yId1 = yId0 + 1;
+
+
+    float a = oldy - (yId0 + 0.5);
+    float b = oldx - (xId0 + 0.5);
+    float a_ = 1.5 - a;
+    float b_ = 1.5 - b;
+
+    xNew[i][j].x = (a_)*(b_)*x[yId0][xId0].x + (a_)*b*x[yId0][xId1].x + a*(b_)*x[yId1][xId0].x + a*b*x[yId1][xId1].x;
+    xNew[i][j].y = (a_)*(b_)*x[yId0][xId0].y + (a_)*b*x[yId0][xId1].y + a*(b_)*x[yId1][xId0].y + a*b*x[yId1][xId1].y;
 
 }
 
@@ -86,22 +81,26 @@ void jacobi(float2 pos, float alpha, float rbeta, float4 **x, float4 **b, float4
     int i = (int)pos.y;
     int j = (int)pos.x;
 
-    float4 xL = x[i][j-1];
-    float4 xR = x[i][j+1];
-    float4 xT = x[i-1][j];
-    float4 xB = x[i+1][j];
+    float4 xL = xNew[i][j-1];
+    float4 xR = xNew[i][j+1];
+    float4 xT = xNew[i-1][j];
+    float4 xB = xNew[i+1][j];
 
-    xNew[i][j].x = (xL.x + xR.x + xT.x + xB.x + b[i][j].x*alpha) * rbeta;
-    xNew[i][j].y = (xL.y + xR.y + xT.y + xB.y + b[i][j].y*alpha) * rbeta;
-    xNew[i][j].z = (xL.z + xR.z + xT.z + xB.z + b[i][j].z*alpha) * rbeta;
-    xNew[i][j].w = (xL.w + xR.w + xT.w + xB.w + b[i][j].w*alpha) * rbeta;
+    xNew[i][j].x = ((xL.x + xR.x + xT.x + xB.x)*alpha + b[i][j].x) * rbeta;
+    xNew[i][j].y = ((xL.y + xR.y + xT.y + xB.y)*alpha + b[i][j].y) * rbeta;
+    xNew[i][j].z = ((xL.z + xR.z + xT.z + xB.z)*alpha + b[i][j].z) * rbeta;
+    xNew[i][j].w = ((xL.w + xR.w + xT.w + xB.w)*alpha + b[i][j].w) * rbeta;
+//    xNew[i][j].x = ((xL.x + xR.x + xT.x + xB.x)*alpha + b[i][j].x) * rbeta;
+//    xNew[i][j].y = ((xL.y + xR.y + xT.y + xB.y)*alpha + b[i][j].y) * rbeta;
+//    xNew[i][j].z = ((xL.z + xR.z + xT.z + xB.z)*alpha + b[i][j].z) * rbeta;
+//    xNew[i][j].w = ((xL.w + xR.w + xT.w + xB.w)*alpha + b[i][j].w) * rbeta;
 }
 
 void addForce(float2 pos, float2 forceOrigin, float2 forceVector, float4 **w_in, float4 **w_out) {
     int i = (int)pos.y;
     int j = (int)pos.x;
     float distance = sqrtf( (pos.x-forceOrigin.x)*(pos.x-forceOrigin.x) + (pos.y-forceOrigin.y)*(pos.y-forceOrigin.y) );
-    float amp = exp(-distance);
+    float amp = exp(-distance/30);
 
     w_out[i][j].x = w_in[i][j].x + forceVector.x * amp;
     w_out[i][j].y = w_in[i][j].y + forceVector.y * amp;
@@ -144,8 +143,8 @@ Solver::Solver(int screenWidth, int screenHeight, int resolution)
     minY = 1.0f;
     maxX = gridSizeX - 1.0f;
     maxY = gridSizeY - 1.0f;
-    dx = 1.0f / gridSizeY;
-    viscosity = 1e-6f;
+    dx = gridSizeY;
+    viscosity = 0; //1e-6f;
 }
 
 Solver::~Solver()
@@ -174,77 +173,80 @@ void Solver::reset() {
     }
 }
 
-void Solver::update(float dt, float2 forceOrigin, float2 forceVector, sf::Uint8 *pixels) {
+void Solver::update(float dt, float2 forceOrigin, float2 forceVector, sf::Uint8 *pixels, bool move_flag) {
 
     // external force
-    for (int i=1; i<gridSizeY-1; i++) {
-        for (int j=1; j<gridSizeX-1; j++) {
-            float2 pos = make_float2(i+0.5, j+0.5);
-            addForce(pos, forceOrigin, forceVector, u, tmp);
-        }
-    }
-    swap(tmp, u);
-    setBoundary(u, -1.0f, gridSizeX, gridSizeY);
-
-    // advect
-    for (int i=1; i<gridSizeY-1; i++) {
-        for (int j=1; j<gridSizeX-1; j++) {
-            float2 pos = make_float2(i+0.5, j+0.5);
-            advect(pos, dt, dx, u, u, tmp);
-        }
-    }
-    swap(tmp, u);
-    setBoundary(u, -1.0f, gridSizeX, gridSizeY);
-
-
-    // diffusion
-    float alpha = dx * dx / (viscosity * dt);
-    float rBeta = 1 / (4 + alpha);
-    for (int s=0; s<20; s++) {
+//    if (move_flag) {
         for (int i=1; i<gridSizeY-1; i++) {
             for (int j=1; j<gridSizeX-1; j++) {
                 float2 pos = make_float2(i+0.5, j+0.5);
-                jacobi(pos, alpha, rBeta, u, u, tmp);
+                addForce(pos, forceOrigin, forceVector, u, tmp);
             }
         }
         swap(tmp, u);
         setBoundary(u, -1.0f, gridSizeX, gridSizeY);
-    }
+//    }
 
-    // projection step: divergence + pressure
-    // divergence bug
-    for (int i=1; i<gridSizeY-1; i++) {
-        for (int j=1; j<gridSizeX-1; j++) {
-            float2 pos = make_float2(i+0.5, j+0.5);
-            divergence(pos, 0.5/dx, u, div);
-            p[i][j] = make_float4(0,0,0,0);
-        }
-    }
+//    // advect
+//    for (int i=1; i<gridSizeY-1; i++) {
+//        for (int j=1; j<gridSizeX-1; j++) {
+//            float2 pos = make_float2(i+0.5, j+0.5);
+//            advect(pos, dt, 1/dx, u, u, tmp);
+//        }
+//    }
+//    swap(tmp, u);
+//    setBoundary(u, -1.0f, gridSizeX, gridSizeY);
+//
+//
+//    // diffusion
+//    float alpha = dx * dx * viscosity * dt;
+//    float rBeta = 1 / (1 + 4*alpha);
+//    for (int s=0; s<20; s++) {
+//        for (int i=1; i<gridSizeY-1; i++) {
+//            for (int j=1; j<gridSizeX-1; j++) {
+//                float2 pos = make_float2(i+0.5, j+0.5);
+//                jacobi(pos, alpha, rBeta, u, u, tmp);
+//            }
+//        }
+//        swap(tmp, u);
+//        setBoundary(u, -1.0f, gridSizeX, gridSizeY);
+//    }
 
-    // pressure
-    alpha = -dx * dx;
-    rBeta = 1 / 4;
-    for (int s=0; s<20; s++) {
-        for (int i=1; i<gridSizeY-1; i++) {
-            for (int j=1; j<gridSizeX-1; j++) {
-                float2 pos = make_float2(i+0.5, j+0.5);
-                jacobi(pos, alpha, rBeta, p, div, tmp);
-            }
-        }
-        swap(tmp, p);
-        setBoundary(p, 1.0f, gridSizeX, gridSizeY);
-    }
 
-
-    // subGradient
-    for (int i=1; i<gridSizeY-1; i++) {
-        for (int j=1; j<gridSizeX-1; j++) {
-            float2 pos = make_float2(i+0.5, j+0.5);
-            subgradient(pos, 0.5/dx, p, u, tmp);
-        }
-    }
-    swap(tmp, u);
-    setBoundary(u, -1.0f, gridSizeX, gridSizeY);
+//    // projection step: divergence + pressure
+//    // divergence bug
+//    for (int i=1; i<gridSizeY-1; i++) {
+//        for (int j=1; j<gridSizeX-1; j++) {
+//            float2 pos = make_float2(i+0.5, j+0.5);
+//            divergence(pos, 0.5/dx, u, div);
+//            p[i][j] = make_float4(0,0,0,0);
+//        }
+//    }
+//
+//    // pressure
+//    alpha = 1;
+//    rBeta = 1 / 4;
+//    for (int s=0; s<20; s++) {
+//        for (int i=1; i<gridSizeY-1; i++) {
+//            for (int j=1; j<gridSizeX-1; j++) {
+//                float2 pos = make_float2(i+0.5, j+0.5);
+//                jacobi(pos, alpha, rBeta, p, div, tmp);
+//            }
+//        }
+////        swap(tmp, p);
+//        setBoundary(p, 1.0f, gridSizeX, gridSizeY);
+//    }
+//
+//
+//    // subGradient
+//    for (int i=1; i<gridSizeY-1; i++) {
+//        for (int j=1; j<gridSizeX-1; j++) {
+//            float2 pos = make_float2(i+0.5, j+0.5);
+//            subgradient(pos, 0.5/dx, p, u, tmp);
+//        }
+//    }
+//    swap(tmp, u);
+//    setBoundary(u, -1.0f, gridSizeX, gridSizeY);
 
     // TODO: apply color
     for (int i = 0; i < gridSizeY; i++) {
@@ -252,8 +254,8 @@ void Solver::update(float dt, float2 forceOrigin, float2 forceVector, sf::Uint8 
             pixels[(i*gridSizeX + j) * 4] = 138;
             pixels[(i*gridSizeX + j) * 4+1] = 43;
             pixels[(i*gridSizeX + j) * 4+2] = 226;
-            float amp = sqrtf(u[i][j].x*u[i][j].x + u[i][j].y*u[i][j].y);
-            if (amp > 0) pixels[(i*gridSizeX + j) * 4+3] = 255;
+            float amp = sqrtf(u[i][j].x*u[i][j].x + u[i][j].y*u[i][j].y) * 150;
+            if (amp > 255) pixels[(i*gridSizeX + j) * 4+3] = 255;
             else pixels[(i*gridSizeX + j) * 4+3] = (int) amp;
 //            std::cout << amp << ", ";
         }

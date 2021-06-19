@@ -88,7 +88,7 @@ int main()
             forceOrigin = make_float2(old_pos.x, old_pos.y);
             forceVector = make_float2(mouse_pos.x - old_pos.x, mouse_pos.y - old_pos.y);
 //            draw_mouse(pixels, W, mouse_pos.x, mouse_pos.y);
-            move_flag = false;
+
 //            float elapsed = clock.getElapsedTime().asSeconds();
 //            if (elapsed > timestep) {
 //                stableSolver.update(timestep, forceOrigin, forceVector, pixels);
@@ -100,11 +100,12 @@ int main()
         }
         float elapsed = clock.getElapsedTime().asSeconds();
         while (elapsed > timestep) {
-            stableSolver.update(timestep, forceOrigin, forceVector, pixels);
+            stableSolver.update(timestep, forceOrigin, forceVector, pixels, move_flag);
             elapsed -= timestep;
             forceVector = make_float2(0,0);
             forceOrigin = make_float2(0,0);
             clock.restart();
+            move_flag = false;
         }
 
 
