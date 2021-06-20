@@ -99,9 +99,8 @@ void cuda_addForce(int gridSizeX, int gridSizeY, float2 forceOrigin, float2 forc
     for (int i = index; i < gridSizeY * gridSizeX; i += stride) {
         int a = i / gridSizeX;
         int b = i - a * gridSizeX;
-        float2 pos = make_float2(a, b);
 
-        float distance = sqrtf((pos.x - forceOrigin.x) * (pos.x - forceOrigin.x) + (pos.y - forceOrigin.y) * (pos.y - forceOrigin.y));
+        float distance = sqrtf((a - forceOrigin.x) * (a - forceOrigin.x) + (b - forceOrigin.y) * (b - forceOrigin.y));
         float amp = exp(-distance);
         w_out[a * gridSizeX + b].x = w_in[a * gridSizeX + b].x + forceVector.x * amp;
         w_out[a * gridSizeX + b].y = w_in[a * gridSizeX + b].y + forceVector.y * amp;
@@ -142,9 +141,6 @@ void cuda_divergence(int gridSizeX, int gridSizeY, float4* w, float4* div) {//gr
         int a = i / gridSizeX;
         int b = i - a * gridSizeX;
         if (a == 0 || a == gridSizeY - 1 || b == 0 || b == gridSizeX - 1) continue;
-        float2 pos = make_float2(a + 0.5, b + 0.5);
-        a = (int)pos.x;
-        b = (int)pos.y;
 
         float wL = w[a * gridSizeX + b - 1].x;
         float wR = w[a * gridSizeX + b + 1].x;
@@ -164,9 +160,6 @@ void cuda_jacobi(int gridSizeX, int gridSizeY, float alpha, float rbeta, float4*
         int a = i / gridSizeX;
         int b = i - a * gridSizeX;
         if (a == 0 || a == gridSizeY - 1 || b == 0 || b == gridSizeX - 1) continue;
-        float2 pos = make_float2(a + 0.5, b + 0.5);
-        a = (int)pos.x;
-        b = (int)pos.y;
 
         float4 xL = x[a * gridSizeX + b - 1];
         float4 xR = x[a * gridSizeX + b + 1];
@@ -186,9 +179,6 @@ void cuda_subgradient(int gridSizeX, int gridSizeY, float4* u, float4* uNew) {//
         int a = i / gridSizeX;
         int b = i - a * gridSizeX;
         if (a == 0 || a == gridSizeY - 1 || b == 0 || b == gridSizeX - 1) continue;
-        float2 pos = make_float2(a + 0.5, b + 0.5);
-        a = (int)pos.x;
-        b = (int)pos.y;
 
         float4 pL = u[a * gridSizeX + b - 1];
         float4 pR = u[a * gridSizeX + b + 1];

@@ -247,23 +247,23 @@ C:\Users\史孟玄\OneDrive\文件\大四\Parallel Computing\Parallel-Computing-
 C:\Users\史孟玄\OneDrive\文件\大四\Parallel Computing\Parallel-Computing-Final-Project\SFML\include\SFML/Graphics/Text.hpp(449): warning : field of class type without a DLL interface used in a class with a DLL interface
   
   kernel.cu
-C:/Users/史孟玄/OneDrive/文件/大四/Parallel Computing/Parallel-Computing-Final-Project/CUDA_FluidSimulation/kernel.cu(280): warning C4305: '正在初始化': 從 'double' 轉換為 'float'，是由較大的類型轉換為較小的類型，可能導致資料遺失
-C:/Users/史孟玄/OneDrive/文件/大四/Parallel Computing/Parallel-Computing-Final-Project/CUDA_FluidSimulation/kernel.cu(316): warning C4244: '引數': 將 'T' 轉換為 'float'，由於類型不同，可能導致資料遺失
+C:/Users/史孟玄/OneDrive/文件/大四/Parallel Computing/Parallel-Computing-Final-Project/CUDA_FluidSimulation/kernel.cu(270): warning C4305: '正在初始化': 從 'double' 轉換為 'float'，是由較大的類型轉換為較小的類型，可能導致資料遺失
+C:/Users/史孟玄/OneDrive/文件/大四/Parallel Computing/Parallel-Computing-Final-Project/CUDA_FluidSimulation/kernel.cu(306): warning C4244: '引數': 將 'T' 轉換為 'float'，由於類型不同，可能導致資料遺失
           with
           [
               T=int
           ]
-C:/Users/史孟玄/OneDrive/文件/大四/Parallel Computing/Parallel-Computing-Final-Project/CUDA_FluidSimulation/kernel.cu(316): warning C4244: '引數': 將 'T' 轉換為 'float'，由於類型不同，可能導致資料遺失
+C:/Users/史孟玄/OneDrive/文件/大四/Parallel Computing/Parallel-Computing-Final-Project/CUDA_FluidSimulation/kernel.cu(306): warning C4244: '引數': 將 'T' 轉換為 'float'，由於類型不同，可能導致資料遺失
           with
           [
               T=int
           ]
-C:/Users/史孟玄/OneDrive/文件/大四/Parallel Computing/Parallel-Computing-Final-Project/CUDA_FluidSimulation/kernel.cu(317): warning C4244: '引數': 將 'T' 轉換為 'float'，由於類型不同，可能導致資料遺失
+C:/Users/史孟玄/OneDrive/文件/大四/Parallel Computing/Parallel-Computing-Final-Project/CUDA_FluidSimulation/kernel.cu(307): warning C4244: '引數': 將 'T' 轉換為 'float'，由於類型不同，可能導致資料遺失
           with
           [
               T=int
           ]
-C:/Users/史孟玄/OneDrive/文件/大四/Parallel Computing/Parallel-Computing-Final-Project/CUDA_FluidSimulation/kernel.cu(317): warning C4244: '引數': 將 'T' 轉換為 'float'，由於類型不同，可能導致資料遺失
+C:/Users/史孟玄/OneDrive/文件/大四/Parallel Computing/Parallel-Computing-Final-Project/CUDA_FluidSimulation/kernel.cu(307): warning C4244: '引數': 將 'T' 轉換為 'float'，由於類型不同，可能導致資料遺失
           with
           [
               T=int
