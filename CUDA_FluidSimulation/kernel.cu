@@ -23,6 +23,7 @@ private:
     int screenHeight;
     int gridSizeX;
     int gridSizeY;
+    int deviceId;
 
     float minX;
     float minY;
@@ -61,9 +62,8 @@ Solver::~Solver()
 }
 
 void Solver::reset() {
-    int deviceId;
     int numberOfSMs;
-    cudaGetDevice(&deviceId);
+    cudaGetDevice(&(this->deviceId));
     cudaDeviceGetAttribute(&numberOfSMs, cudaDevAttrMultiProcessorCount, deviceId);
     this->numberofblocks = 16 * numberOfSMs;
     this->numberofthreads = 128;
@@ -131,8 +131,8 @@ void cuda_advect(int gridSizeX, int gridSizeY, float dt, float4* u, float4* xNew
         int a = i / gridSizeX;
         int b = i - a * gridSizeX;
         if (a == 0 || a == gridSizeY - 1 || b == 0 || b == gridSizeX - 1) continue;
-        oldx = b - dt * u[a * gridSizeX + b].x; // * gridSizeX;
-        oldy = a - dt * u[a * gridSizeY + b].y; // * gridSizeX;
+        oldx = b - dt * u[a * gridSizeX + b].x * gridSizeX;
+        oldy = a - dt * u[a * gridSizeY + b].y * gridSizeX;
         oldx = fmax(0.5f, fmin(gridSizeX-0.5f, oldx));
         oldy = fmax(0.5f, fmin(gridSizeY-0.5f, oldy));
         xid0 = (int)oldx;
@@ -213,8 +213,7 @@ void Solver::update(float dt, float2 forceOrigin, float2 forceVector, Uint8* pix
     // external force
     cuda_addForce<<< numberofblocks, numberofthreads >>>(gridSizeX, gridSizeY, forceOrigin, forceVector, u, tmp);
     swap(tmp, u);
-    setBoundary<<< numberofblocks, numberofthreads >>>(u, -1.0f, gridSizeX, gridSizeY);
-    cuda_print<<< 1, 1 >>>(u);
+    setBoundary << < numberofblocks, numberofthreads >> > (u, -1.0f, gridSizeX, gridSizeY);
     // advect
     cuda_advect<<< numberofblocks, numberofthreads >>>(gridSizeX, gridSizeY, dt, u, tmp);
     swap(tmp, u);
@@ -243,7 +242,9 @@ void Solver::update(float dt, float2 forceOrigin, float2 forceVector, Uint8* pix
     swap(tmp, u);
     setBoundary<<< numberofblocks, numberofthreads >>>(u, -1.0f, gridSizeX, gridSizeY);
     //finish
+    cudaMemPrefetchAsync(u, gridSizeY * gridSizeX * sizeof(float4), deviceId);
     cudaDeviceSynchronize();
+
     // apply color
     for (int i = 0; i < gridSizeY; i++) {
         for (int j = 0; j < gridSizeX; j++) {
@@ -291,7 +292,7 @@ int main()
     bool click_flag = false;
     Solver stableSolver(W, H, W);
     stableSolver.reset();
-    float  timestep = 0.1;
+    float  timestep = 0.01;
     while (window.isOpen())
     {
         Event event;
