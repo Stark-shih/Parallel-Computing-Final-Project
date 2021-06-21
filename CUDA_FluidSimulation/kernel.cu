@@ -1,4 +1,3 @@
-
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 
@@ -35,6 +34,8 @@ private:
     float4* tmp;
     float4* div;
     float4* p;
+    float4* dye;
+    float4* dye_out;
 public:
     Solver(int width, int height, int resolution);
     ~Solver();
@@ -72,22 +73,34 @@ void Solver::reset() {
     cudaMallocManaged(&(this->tmp), gridSizeY * gridSizeX * sizeof(float4));
     cudaMallocManaged(&(this->div), gridSizeY * gridSizeX * sizeof(float4));
     cudaMallocManaged(&(this->p), gridSizeY * gridSizeX * sizeof(float4));
+    cudaMallocManaged(&(this->dye), gridSizeY * gridSizeX * sizeof(float4));
+    cudaMallocManaged(&(this->dye_out), gridSizeY * gridSizeX * sizeof(float4));
 
-    cudaMemset(this->u, 0, 1000 * gridSizeY * gridSizeX * sizeof(float4));
-    cudaMemset(this->tmp, 0, 1000 * gridSizeY * gridSizeX * sizeof(float4));
-    cudaMemset(this->div, 0, 1000 * gridSizeY * gridSizeX * sizeof(float4));
-    cudaMemset(this->p, 0, 1000 * gridSizeY * gridSizeX * sizeof(float4));
+    for (int i = 0; i < gridSizeY; i++) {
+        for (int j = 0; j < gridSizeX; j++) {
+            dye[i * gridSizeX + j].x = 255 * ((i / 20 + j / 20) % 2);
+            dye[i * gridSizeX + j].y = 255 * ((i / 20 + j / 20) % 2);
+            dye[i * gridSizeX + j].z = 255 * ((i / 20 + j / 20) % 2);
+            dye[i * gridSizeX + j].w = 255;
+        }
+    }
+
+    cudaMemset(this->u, 0, gridSizeY * gridSizeX * sizeof(float4));
+    cudaMemset(this->tmp, 0, gridSizeY * gridSizeX * sizeof(float4));
+    cudaMemset(this->div, 0, gridSizeY * gridSizeX * sizeof(float4));
+    cudaMemset(this->p, 0, gridSizeY * gridSizeX * sizeof(float4));
+    cudaMemset(this->dye_out, 0, gridSizeY * gridSizeX * sizeof(float4));
 }
 void swap(float4*& field1, float4*& field2) {
     float4* temp = field1;
     field1 = field2;
     field2 = temp;
 }
-// __device__
+__device__
 float _clampTo_0_1(float val) {
-	if (val < 0.f) val = 0;
-	if (val > 255.0f) val = 255;
-	return val;
+    if (val < -10000.f) val = -10000;
+    if (val > 10000.0f) val = 10000;
+    return val;
 }
 __global__
 void setBoundary(float4* field, float sc, int w, int h) {
@@ -111,12 +124,11 @@ void cuda_addForce(int gridSizeX, int gridSizeY, float2 forceOrigin, float2 forc
     for (int i = index; i < gridSizeY * gridSizeX; i += stride) {
         int a = i / gridSizeX;
         int b = i - a * gridSizeX;
-        if (a == 0 || a == gridSizeY - 1 || b == 0 || b == gridSizeX - 1) continue;
-        float2 pos = make_float2(b, a);
+        float2 pos = make_float2(a, b);
 
         float distance = sqrtf((pos.x - forceOrigin.x) * (pos.x - forceOrigin.x) + (pos.y - forceOrigin.y) * (pos.y - forceOrigin.y));
-        float amp = exp(-distance/10);
-        // amp = (amp);
+        float amp = exp(-distance / 15);
+        amp = (amp);
         w_out[a * gridSizeX + b].x = (w_in[a * gridSizeX + b].x + forceVector.x * amp);
         w_out[a * gridSizeX + b].y = (w_in[a * gridSizeX + b].y + forceVector.y * amp);
     }
@@ -131,10 +143,10 @@ void cuda_advect(int gridSizeX, int gridSizeY, float dt, float4* u, float4* xNew
         int a = i / gridSizeX;
         int b = i - a * gridSizeX;
         if (a == 0 || a == gridSizeY - 1 || b == 0 || b == gridSizeX - 1) continue;
-        oldx = b - dt * u[a * gridSizeX + b].x * gridSizeX;
-        oldy = a - dt * u[a * gridSizeY + b].y * gridSizeX;
-        oldx = fmax(0.5f, fmin(gridSizeX-0.5f, oldx));
-        oldy = fmax(0.5f, fmin(gridSizeY-0.5f, oldy));
+        oldx = a - dt * u[a * gridSizeX + b].x * gridSizeX;
+        oldy = b - dt * u[a * gridSizeY + b].y * gridSizeY;
+        oldx = fmax(0.5f, fmin(gridSizeX - 0.5f, oldx));
+        oldy = fmax(0.5f, fmin(gridSizeY - 0.5f, oldy));
         xid0 = (int)oldx;
         xid1 = xid0 + 1;
         yid0 = (int)oldy;
@@ -143,11 +155,8 @@ void cuda_advect(int gridSizeX, int gridSizeY, float dt, float4* u, float4* xNew
         mdx = 1 - dx;
         dy = oldy - yid0;
         mdy = 1 - dy;
-        xNew[a * gridSizeX + b].x = mdx * (mdy * u[yid0 * gridSizeX + xid0].x + dy * u[yid1 * gridSizeX + xid0].x) + dx * (mdy * u[yid0 * gridSizeX + xid1].x + dy * u[yid1 * gridSizeX + xid1].x);
-        xNew[a * gridSizeX + b].y = mdx * (mdy * u[yid0 * gridSizeX + xid0].y + dy * u[yid1 * gridSizeX + xid0].y) + dx * (mdy * u[yid0 * gridSizeX + xid1].y + dy * u[yid1 * gridSizeX + xid1].y);
-        xNew[a * gridSizeX + b].x = (xNew[a * gridSizeX + b].x / 1.005);
-        xNew[a * gridSizeX + b].y = (xNew[a * gridSizeX + b].y / 1.005);
-    
+        xNew[a * gridSizeX + b].x = mdx * (mdy * u[xid0 * gridSizeX + yid0].x + dy * u[xid0 * gridSizeX + yid1].x) + dx * (mdy * u[xid1 * gridSizeX + yid0].x + dy * u[xid1 * gridSizeX + yid1].x);
+        xNew[a * gridSizeX + b].y = mdx * (mdy * u[xid0 * gridSizeX + yid0].y + dy * u[xid0 * gridSizeX + yid1].y) + dx * (mdy * u[xid1 * gridSizeX + yid0].y + dy * u[xid1 * gridSizeX + yid1].y);
     }
 }
 __global__
@@ -163,12 +172,12 @@ void cuda_divergence(int gridSizeX, int gridSizeY, float4* w, float4* div, float
         float wR = w[a * gridSizeX + b + 1].x;
         float wT = w[(a - 1) * gridSizeX + b].y;
         float wB = w[(a + 1) * gridSizeX + b].y;
-        div[a * gridSizeX + b].w = -0.5 * ((wR - wL) + (wT - wB));
-        p[a * gridSizeX + b] = make_float4(0,0,0,0);
+        div[a * gridSizeX + b].w = -0.5 * ((wR - wL) + (wB - wT));
+        p[a * gridSizeX + b] = w[a * gridSizeX + b];
     }
 }
 __global__
-void cuda_jacobi(int gridSizeX, int gridSizeY,  float alpha, float rbeta, float4* x, float4* b_, float4* xNew) {
+void cuda_jacobi(int gridSizeX, int gridSizeY, float alpha, float rbeta, float4* x, float4* b_, float4* xNew) {
     int index = threadIdx.x + blockIdx.x * blockDim.x;
     int stride = blockDim.x * gridDim.x;
     for (int i = index; i < gridSizeY * gridSizeX; i += stride) {
@@ -181,7 +190,7 @@ void cuda_jacobi(int gridSizeX, int gridSizeY,  float alpha, float rbeta, float4
         float4 xT = x[(a - 1) * gridSizeX + b];
         float4 xB = x[(a + 1) * gridSizeX + b];
         float4 bc = b_[a * gridSizeX + b];
-        xNew[a * gridSizeX + b].z = ((xL.z + xR.z + xT.z + xB.z)*alpha + bc.w) * rbeta;
+        xNew[a * gridSizeX + b].z = ((xL.z + xR.z + xT.z + xB.z) + bc.w * alpha) * rbeta;;
     }
 }
 __global__
@@ -200,70 +209,83 @@ void cuda_subgradient(int gridSizeX, int gridSizeY, float4* p, float4* w, float4
 
         uNew[a * gridSizeX + b] = w[a * gridSizeX + b];
         uNew[a * gridSizeX + b].x -= 0.5 * (pR.z - pL.z);
-        uNew[a * gridSizeX + b].y -= 0.5 * (pT.z - pB.z);
+        uNew[a * gridSizeX + b].y -= 0.5 * (pB.z - pT.z);
     }
 }
-__global__ 
-void cuda_print(float4* u) {
-    printf("%f\n", u[200*400+200].x);
+__global__
+void cuda_DyeAdvect(int gridSizeX, int gridSizeY, float dt, float4* u, float4* dye, float4* dye_out) {
+    int index = threadIdx.x + blockIdx.x * blockDim.x;
+    int stride = blockDim.x * gridDim.x;
+    float oldx, oldy, dx, dy, mdx, mdy;
+    int xid0, xid1, yid0, yid1;
+    for (int i = index; i < gridSizeY * gridSizeX; i += stride) {
+        int a = i / gridSizeX;
+        int b = i - a * gridSizeX;
+        oldx = a - dt * u[a * gridSizeX + b].x * gridSizeX;
+        oldy = b - dt * u[a * gridSizeY + b].y * gridSizeY;
+        oldx = fmax(0.5f, fmin(gridSizeX - 0.5f, oldx));
+        oldy = fmax(0.5f, fmin(gridSizeY - 0.5f, oldy));
+        xid0 = (int)oldx;
+        xid1 = xid0 + 1;
+        yid0 = (int)oldy;
+        yid1 = yid0 + 1;
+        dx = oldx - xid0;
+        mdx = xid1 - oldx;
+        dy = oldy - yid0;
+        mdy = yid1 - oldy;
+        dye_out[a * gridSizeX + b].x = mdx * (mdy * dye[xid0 * gridSizeX + yid0].x + dy * dye[xid0 * gridSizeX + yid1].x) + dx * (mdy * dye[xid1 * gridSizeX + yid0].x + dy * dye[xid1 * gridSizeX + yid1].x);
+        dye_out[a * gridSizeX + b].y = mdx * (mdy * dye[xid0 * gridSizeX + yid0].y + dy * dye[xid0 * gridSizeX + yid1].y) + dx * (mdy * dye[xid1 * gridSizeX + yid0].y + dy * dye[xid1 * gridSizeX + yid1].y);
+        dye_out[a * gridSizeX + b].z = mdx * (mdy * dye[xid0 * gridSizeX + yid0].z + dy * dye[xid0 * gridSizeX + yid1].z) + dx * (mdy * dye[xid1 * gridSizeX + yid0].z + dy * dye[xid1 * gridSizeX + yid1].z);
+    }
 }
 //adect->forceaply->applyDye->divergence->jacobiviscousdiffusion->applygradient
 void Solver::update(float dt, float2 forceOrigin, float2 forceVector, Uint8* pixels) {
 
     // external force
-    cuda_addForce<<< numberofblocks, numberofthreads >>>(gridSizeX, gridSizeY, forceOrigin, forceVector, u, tmp);
+    cuda_addForce << < numberofblocks, numberofthreads >> > (gridSizeX, gridSizeY, forceOrigin, forceVector, u, tmp);
     swap(tmp, u);
     setBoundary << < numberofblocks, numberofthreads >> > (u, -1.0f, gridSizeX, gridSizeY);
     // advect
-    cuda_advect<<< numberofblocks, numberofthreads >>>(gridSizeX, gridSizeY, dt, u, tmp);
+    cuda_advect << < numberofblocks, numberofthreads >> > (gridSizeX, gridSizeY, dt, u, tmp);
     swap(tmp, u);
-    setBoundary<<< numberofblocks, numberofthreads >>>(u, -1.0f, gridSizeX, gridSizeY);
-    // // diffussion
-    // float alpha = dt*viscosity*gridSizeX*gridSizeY;;
-    // float rBeta = 1/(1+4*alpha);
-    // for (int s = 0; s < 20; s++) {
-    //     cuda_jacobi<<< numberofblocks, numberofthreads >>>(gridSizeX, gridSizeY, alpha, rBeta, u, u, tmp);
-    //     swap(tmp, u);
-    //     setBoundary<<< numberofblocks, numberofthreads >>>(u, -1.0f, gridSizeX, gridSizeY);
-    // }
+    setBoundary << < numberofblocks, numberofthreads >> > (u, -1.0f, gridSizeX, gridSizeY);
+    // diffussion
+    //float alpha = dt * viscosity * gridSizeX * gridSizeY;;
+    //float rBeta = 1 / (1 + 4 * alpha);
+    //for (int s = 0; s < 20; s++) {
+    //    cuda_jacobi << < numberofblocks, numberofthreads >> > (gridSizeX, gridSizeY, alpha, rBeta, u, u, tmp);
+    //    swap(tmp, u);
+    //    setBoundary << < numberofblocks, numberofthreads >> > (u, -1.0f, gridSizeX, gridSizeY);
+    //}
     // divergence
-    cuda_divergence<<< numberofblocks, numberofthreads >>>(gridSizeX, gridSizeY,  u, div, p);
-    setBoundary<<<numberofblocks, numberofthreads >>>(div, 1.0f, gridSizeX, gridSizeY);
+    cuda_divergence << < numberofblocks, numberofthreads >> > (gridSizeX, gridSizeY, u, div, p);
+    setBoundary << <numberofblocks, numberofthreads >> > (div, 1.0f, gridSizeX, gridSizeY);
     // pressure
-    float alpha = 1;
-    float rBeta = 1/4;
-    for (int s = 0; s < 40; s++) {
-        cuda_jacobi<<< numberofblocks, numberofthreads >>>(gridSizeX, gridSizeY, alpha, rBeta, p, div, tmp);
+    float alpha = 1.;
+    float rBeta = 1 / 4;
+    for (int s = 0; s < 20; s++) {
+        cuda_jacobi << < numberofblocks, numberofthreads >> > (gridSizeX, gridSizeY, alpha, rBeta, p, div, tmp);
         swap(tmp, p);
-        setBoundary<<< numberofblocks, numberofthreads >>>(p, 1.0f, gridSizeX, gridSizeY);
+        setBoundary << < numberofblocks, numberofthreads >> > (p, 1.0f, gridSizeX, gridSizeY);
     }
     // subGradient
-    cuda_subgradient<<< numberofblocks, numberofthreads >>>(gridSizeX, gridSizeY, p, u, tmp);
+    cuda_subgradient << < numberofblocks, numberofthreads >> > (gridSizeX, gridSizeY, p, u, tmp);
     swap(tmp, u);
-    setBoundary<<< numberofblocks, numberofthreads >>>(u, -1.0f, gridSizeX, gridSizeY);
+    setBoundary << < numberofblocks, numberofthreads >> > (u, -1.0f, gridSizeX, gridSizeY);
+    //dye
+    cuda_DyeAdvect << < numberofblocks, numberofthreads >> > (gridSizeX, gridSizeY, dt, u, dye, dye_out);
+    swap(dye_out, dye);
     //finish
-    cudaMemPrefetchAsync(u, gridSizeY * gridSizeX * sizeof(float4), deviceId);
     cudaDeviceSynchronize();
-
+    cudaMemPrefetchAsync(dye, gridSizeY * gridSizeX * sizeof(float4), deviceId);
     // apply color
     for (int i = 0; i < gridSizeY; i++) {
         for (int j = 0; j < gridSizeX; j++) {
-            pixels[(i * gridSizeX + j) * 4] = 138;
-            pixels[(i * gridSizeX + j) * 4 + 1] = 43;
-            pixels[(i * gridSizeX + j) * 4 + 2] = 226;
-            float amp = sqrtf(u[i*gridSizeX+ j].x * u[i * gridSizeX + j].x + u[i * gridSizeX + j].y * u[i * gridSizeX + j].y) * 255;
-            pixels[(i * gridSizeX + j) * 4 + 3] = (int) _clampTo_0_1(amp);
+            pixels[(i * gridSizeX + j) * 4] = dye[i * gridSizeX + j].x;
+            pixels[(i * gridSizeX + j) * 4 + 1] = dye[i * gridSizeX + j].y;
+            pixels[(i * gridSizeX + j) * 4 + 2] = dye[i * gridSizeX + j].z;
+            pixels[(i * gridSizeX + j) * 4 + 3] = 255;
         }
-    }
-}
-
-void Solver::print(float4* matrix) {
-    for (int i = 0; i < gridSizeY; i++) {
-        for (int j = 0; j < gridSizeX; j++) {
-            float amp = sqrtf(matrix[i * gridSizeX + j].x * matrix[i * gridSizeX + j].x + matrix[i * gridSizeX + j].y * matrix[i * gridSizeX + j].y);
-            std::cout << std::fixed << std::setprecision(0) << amp;
-        }
-        std::cout << "\n";
     }
 }
 //main.cpp
@@ -309,13 +331,15 @@ int main()
                 break;
             case Event::MouseButtonPressed:
                 click_flag = true;
-                last_pos = Mouse::getPosition(window);         
+                last_pos.x = event.mouseButton.x;
+                last_pos.y = event.mouseButton.y;
                 break;
             case Event::MouseMoved:
                 if (click_flag) {
-                    now_pos = Mouse::getPosition(window);
-                    forceOrigin = make_float2(last_pos.x, last_pos.y);
-                    forceVector = make_float2(now_pos.x - last_pos.x, now_pos.y - last_pos.y);
+                    now_pos.x = event.mouseMove.x;
+                    now_pos.y = event.mouseMove.y;
+                    forceOrigin = make_float2(last_pos.y, last_pos.x);
+                    forceVector = make_float2(now_pos.y - last_pos.y, now_pos.x - last_pos.x);
                     last_pos.x = now_pos.x;
                     last_pos.y = now_pos.y;
                 }
