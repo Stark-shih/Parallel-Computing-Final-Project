@@ -39,7 +39,7 @@ private:
 public:
     Solver(int width, int height, int resolution);
     ~Solver();
-    void reset();
+    void reset(const Uint8* pixels);
     void update(float dt, float2 forceOrigin, float2 forceVector, Uint8* pixels);
     void print(float4* matrix);
 };
@@ -62,7 +62,7 @@ Solver::~Solver()
 {
 }
 
-void Solver::reset() {
+void Solver::reset(const Uint8* pixels) {
     int numberOfSMs;
     cudaGetDevice(&(this->deviceId));
     cudaDeviceGetAttribute(&numberOfSMs, cudaDevAttrMultiProcessorCount, deviceId);
@@ -78,10 +78,10 @@ void Solver::reset() {
 
     for (int i = 0; i < gridSizeY; i++) {
         for (int j = 0; j < gridSizeX; j++) {
-            dye[i * gridSizeX + j].x = 255 * ((i / 20 + j / 20) % 2);
-            dye[i * gridSizeX + j].y = 255 * ((i / 20 + j / 20) % 2);
-            dye[i * gridSizeX + j].z = 255 * ((i / 20 + j / 20) % 2);
-            dye[i * gridSizeX + j].w = 255;
+            dye[i * gridSizeX + j].x = pixels[(i * gridSizeX + j) * 4];
+            dye[i * gridSizeX + j].y = pixels[(i * gridSizeX + j) * 4+1];
+            dye[i * gridSizeX + j].z = pixels[(i * gridSizeX + j) * 4+2];
+            dye[i * gridSizeX + j].w = pixels[(i * gridSizeX + j) * 4+3];
         }
     }
 
@@ -292,12 +292,14 @@ void Solver::update(float dt, float2 forceOrigin, float2 forceVector, Uint8* pix
 int main()
 {
     int W = 400, H = 400;
-    RenderWindow window(VideoMode(W, H), "test");
+    RenderWindow window(VideoMode(W, H), "go down");
     //window.setFramerateLimit(60);
 
     Uint8* pixels = new Uint8[W * H * 4];
     Texture texture;
     texture.create(W, H);
+    Image img;
+    img.loadFromFile("../godown.jpg");
     Sprite sprite(texture);
     for (register int i = 0; i < W * H * 4; i += 4) {
         pixels[i] = 0;
@@ -313,7 +315,7 @@ int main()
     float2 forceOrigin = make_float2(0, 0);
     bool click_flag = false;
     Solver stableSolver(W, H, W);
-    stableSolver.reset();
+    stableSolver.reset(img.getPixelsPtr());
     float  timestep = 0.01;
     while (window.isOpen())
     {
