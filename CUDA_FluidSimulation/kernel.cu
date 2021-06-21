@@ -83,10 +83,10 @@ void swap(float4*& field1, float4*& field2) {
     field1 = field2;
     field2 = temp;
 }
-__device__
+// __device__
 float _clampTo_0_1(float val) {
-	if (val < -10000.f) val = -10000;
-	if (val > 10000.0f) val = 10000;
+	if (val < 0.f) val = 0;
+	if (val > 255.0f) val = 255;
 	return val;
 }
 __global__
@@ -111,6 +111,7 @@ void cuda_addForce(int gridSizeX, int gridSizeY, float2 forceOrigin, float2 forc
     for (int i = index; i < gridSizeY * gridSizeX; i += stride) {
         int a = i / gridSizeX;
         int b = i - a * gridSizeX;
+        if (a == 0 || a == gridSizeY - 1 || b == 0 || b == gridSizeX - 1) continue;
         float2 pos = make_float2(b, a);
 
         float distance = sqrtf((pos.x - forceOrigin.x) * (pos.x - forceOrigin.x) + (pos.y - forceOrigin.y) * (pos.y - forceOrigin.y));
@@ -130,8 +131,8 @@ void cuda_advect(int gridSizeX, int gridSizeY, float dt, float4* u, float4* xNew
         int a = i / gridSizeX;
         int b = i - a * gridSizeX;
         if (a == 0 || a == gridSizeY - 1 || b == 0 || b == gridSizeX - 1) continue;
-        oldx = b - dt * u[a * gridSizeX + b].x;
-        oldy = a - dt * u[a * gridSizeY + b].y;
+        oldx = b - dt * u[a * gridSizeX + b].x; // * gridSizeX;
+        oldy = a - dt * u[a * gridSizeY + b].y; // * gridSizeX;
         oldx = fmax(0.5f, fmin(gridSizeX-0.5f, oldx));
         oldy = fmax(0.5f, fmin(gridSizeY-0.5f, oldy));
         xid0 = (int)oldx;
@@ -144,8 +145,8 @@ void cuda_advect(int gridSizeX, int gridSizeY, float dt, float4* u, float4* xNew
         mdy = 1 - dy;
         xNew[a * gridSizeX + b].x = mdx * (mdy * u[yid0 * gridSizeX + xid0].x + dy * u[yid1 * gridSizeX + xid0].x) + dx * (mdy * u[yid0 * gridSizeX + xid1].x + dy * u[yid1 * gridSizeX + xid1].x);
         xNew[a * gridSizeX + b].y = mdx * (mdy * u[yid0 * gridSizeX + xid0].y + dy * u[yid1 * gridSizeX + xid0].y) + dx * (mdy * u[yid0 * gridSizeX + xid1].y + dy * u[yid1 * gridSizeX + xid1].y);
-        xNew[a * gridSizeX + b].x /= 1.005;
-        xNew[a * gridSizeX + b].y /= 1.005;
+        xNew[a * gridSizeX + b].x = (xNew[a * gridSizeX + b].x / 1.005);
+        xNew[a * gridSizeX + b].y = (xNew[a * gridSizeX + b].y / 1.005);
     
     }
 }
@@ -249,9 +250,8 @@ void Solver::update(float dt, float2 forceOrigin, float2 forceVector, Uint8* pix
             pixels[(i * gridSizeX + j) * 4] = 138;
             pixels[(i * gridSizeX + j) * 4 + 1] = 43;
             pixels[(i * gridSizeX + j) * 4 + 2] = 226;
-            float amp = sqrtf(u[i*gridSizeX+ j].x * u[i * gridSizeX + j].x + u[i * gridSizeX + j].y * u[i * gridSizeX + j].y) * 200;
-            if (amp > 255) pixels[(i * gridSizeX + j) * 4 + 3] = 255;
-            else pixels[(i * gridSizeX + j) * 4 + 3] = (int) amp;
+            float amp = sqrtf(u[i*gridSizeX+ j].x * u[i * gridSizeX + j].x + u[i * gridSizeX + j].y * u[i * gridSizeX + j].y) * 255;
+            pixels[(i * gridSizeX + j) * 4 + 3] = (int) _clampTo_0_1(amp);
         }
     }
 }
