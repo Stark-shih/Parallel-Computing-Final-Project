@@ -344,7 +344,7 @@ int main()
     Texture texture;
     texture.create(W, H);
     Image img;
-    img.loadFromFile("../godown.jpg");
+    img.loadFromFile("../images.jpg");
     Sprite sprite(texture);
     for (register int i = 0; i < W * H * 4; i += 4) {
         pixels[i] = 0;
