@@ -36,12 +36,14 @@ private:
     float4* p;
     float4* dye;
     float4* dye_out;
+    
 public:
     Solver(int width, int height, int resolution);
     ~Solver();
     void reset(const Uint8* pixels);
-    void update(float dt, float2 forceOrigin, float2 forceVector, Uint8* pixels);
+    void update(float dt, float2 forceOrigin, float2 forceVector);
     void print(float4* matrix);
+    unsigned char* pixels;
 };
 //solver.cpp
 Solver::Solver(int screenWidth, int screenHeight, int resolution)
@@ -75,6 +77,7 @@ void Solver::reset(const Uint8* pixels) {
     cudaMallocManaged(&(this->p), gridSizeY * gridSizeX * sizeof(float4));
     cudaMallocManaged(&(this->dye), gridSizeY * gridSizeX * sizeof(float4));
     cudaMallocManaged(&(this->dye_out), gridSizeY * gridSizeX * sizeof(float4));
+    cudaMallocManaged(&(this->pixels), 4*gridSizeY * gridSizeX * sizeof(unsigned char));
 
     for (int i = 0; i < gridSizeY; i++) {
         for (int j = 0; j < gridSizeX; j++) {
@@ -84,7 +87,6 @@ void Solver::reset(const Uint8* pixels) {
             dye[i * gridSizeX + j].w = pixels[(i * gridSizeX + j) * 4 + 3];
         }
     }
-
     cudaMemset(this->u, 0, gridSizeY * gridSizeX * sizeof(float4));
     cudaMemset(this->tmp, 0, gridSizeY * gridSizeX * sizeof(float4));
     cudaMemset(this->div, 0, gridSizeY * gridSizeX * sizeof(float4));
@@ -244,11 +246,24 @@ void cuda_DyeAdvect(int gridSizeX, int gridSizeY, float dt, float4* u, float4* d
     }
 }
 __global__
+void dye_pixels(int gridSizeX, int gridSizeY, float4* dye, unsigned char* pixels) {
+    int index = threadIdx.x + blockIdx.x * blockDim.x;
+    int stride = blockDim.x * gridDim.x;
+    for (int i = index; i < gridSizeY * gridSizeX; i += stride) {
+        int a = i / gridSizeX;
+        int b = i - a * gridSizeX;
+        pixels[(a * gridSizeX + b) * 4] = dye[a * gridSizeX + b].x;
+        pixels[(a * gridSizeX + b) * 4 + 1] = dye[a * gridSizeX + b].y;
+        pixels[(a * gridSizeX + b) * 4 + 2] = dye[a * gridSizeX + b].z;
+        pixels[(a * gridSizeX + b) * 4 + 3] = 255;
+    }
+}
+__global__
 void cuda_print(float4* u) {
     printf("%f\n", u[200 * 400 + 200].z);
 }
 //adect->forceaply->applyDye->divergence->jacobiviscousdiffusion->applygradient
-void Solver::update(float dt, float2 forceOrigin, float2 forceVector, Uint8* pixels) {
+void Solver::update(float dt, float2 forceOrigin, float2 forceVector) {
 
 
     // external force
@@ -299,29 +314,12 @@ void Solver::update(float dt, float2 forceOrigin, float2 forceVector, Uint8* pix
     //dye
     cuda_DyeAdvect << < numberofblocks, numberofthreads >> > (gridSizeX, gridSizeY, dt, u, dye, dye_out);
     swap(dye_out, dye);
-    //finish
-    cudaDeviceSynchronize();
-    cudaMemPrefetchAsync(u, gridSizeY * gridSizeX * sizeof(float4), deviceId);
-
     // apply color
-    //for (int i = 0; i < gridSizeY; i++) {
-    //    for (int j = 0; j < gridSizeX; j++) {
-    //        pixels[(i * gridSizeX + j) * 4] = 138;
-    //        pixels[(i * gridSizeX + j) * 4 + 1] = 43;
-    //        pixels[(i * gridSizeX + j) * 4 + 2] = 226;
-    //        float amp = sqrtf(u[i * gridSizeX + j].x * u[i * gridSizeX + j].x + u[i * gridSizeX + j].y * u[i * gridSizeX + j].y) * 255;
-    //        pixels[(i * gridSizeX + j) * 4 + 3] = (int)_clampTo_0_1(amp);
-    //    }
-    //}
-    //apply color
-    for (int i = 0; i < gridSizeY; i++) {
-        for (int j = 0; j < gridSizeX; j++) {
-            pixels[(i * gridSizeX + j) * 4] = dye[i * gridSizeX + j].x;
-            pixels[(i * gridSizeX + j) * 4 + 1] = dye[i * gridSizeX + j].y;
-            pixels[(i * gridSizeX + j) * 4 + 2] = dye[i * gridSizeX + j].z;
-            pixels[(i * gridSizeX + j) * 4 + 3] = 255;
-        }
-    }
+    dye_pixels << < numberofblocks, numberofthreads >> > (gridSizeX, gridSizeY, dye, pixels);
+    cudaDeviceSynchronize();
+    //finish
+    cudaMemPrefetchAsync(pixels, 4* gridSizeY * gridSizeX * sizeof(unsigned char), deviceId);
+
 }
 
 void Solver::print(float4* matrix) {
@@ -340,19 +338,11 @@ int main()
     RenderWindow window(VideoMode(W, H), "go down");
     //window.setFramerateLimit(60);
 
-    Uint8* pixels = new Uint8[W * H * 4];
     Texture texture;
     texture.create(W, H);
     Image img;
     img.loadFromFile("../images.jpg");
     Sprite sprite(texture);
-    for (register int i = 0; i < W * H * 4; i += 4) {
-        pixels[i] = 0;
-        pixels[i + 1] = 0;
-        pixels[i + 2] = 0;
-        pixels[i + 3] = 255;
-    }
-
     Clock clock;
     Time t;
     Vector2i last_pos, now_pos;
@@ -400,12 +390,12 @@ int main()
 
         float elapsed = clock.getElapsedTime().asSeconds();
         if (elapsed > timestep) {
-            stableSolver.update(timestep, forceOrigin, forceVector, pixels);
+            stableSolver.update(timestep, forceOrigin, forceVector);
             clock.restart();
         }
 
 
-        texture.update(pixels);
+        texture.update(stableSolver.pixels);
         window.clear();
         window.draw(sprite);
         window.display();
