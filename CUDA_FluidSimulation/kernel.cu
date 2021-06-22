@@ -16,8 +16,8 @@ class Solver
 {
 private:
     /* cuda */
-    int numberofblocks = 20;
-    int numberofthreads = 20;
+    int numberofblocks;
+    int numberofthreads;
     /* data */
     int screenWidth;
     int screenHeight;
@@ -72,19 +72,26 @@ void Solver::reset() {
     cudaMallocManaged(&(this->tmp), gridSizeY * gridSizeX * sizeof(float4));
     cudaMallocManaged(&(this->div), gridSizeY * gridSizeX * sizeof(float4));
     cudaMallocManaged(&(this->p), gridSizeY * gridSizeX * sizeof(float4));
-
-    cudaMemset(this->u, 0, 1000 * gridSizeY * gridSizeX * sizeof(float4));
-    cudaMemset(this->tmp, 0, 1000 * gridSizeY * gridSizeX * sizeof(float4));
-    cudaMemset(this->div, 0, 1000 * gridSizeY * gridSizeX * sizeof(float4));
-    cudaMemset(this->p, 0, 1000 * gridSizeY * gridSizeX * sizeof(float4));
 }
+
+void Solver::print(float4* matrix) {
+    for (int i = 0; i < gridSizeY; i++) {
+        for (int j = 0; j < gridSizeX; j++) {
+            float amp = sqrtf(matrix[i * gridSizeX + j].x * matrix[i * gridSizeX + j].x + matrix[i * gridSizeX + j].y * matrix[i * gridSizeX + j].y);
+            std::cout << std::fixed << std::setprecision(0) << amp;
+        }
+        std::cout << "\n";
+    }
+}
+
+
 void swap(float4*& field1, float4*& field2) {
     float4* temp = field1;
     field1 = field2;
     field2 = temp;
 }
 // __device__
-float _clampTo_0_1(float val) {
+float clampTo_0_255(float val) {
 	if (val < 0.f) val = 0;
 	if (val > 255.0f) val = 255;
 	return val;
@@ -116,7 +123,6 @@ void cuda_addForce(int gridSizeX, int gridSizeY, float2 forceOrigin, float2 forc
 
         float distance = sqrtf((pos.x - forceOrigin.x) * (pos.x - forceOrigin.x) + (pos.y - forceOrigin.y) * (pos.y - forceOrigin.y));
         float amp = exp(-distance/10);
-        // amp = (amp);
         w_out[a * gridSizeX + b].x = (w_in[a * gridSizeX + b].x + forceVector.x * amp);
         w_out[a * gridSizeX + b].y = (w_in[a * gridSizeX + b].y + forceVector.y * amp);
     }
@@ -125,28 +131,28 @@ __global__
 void cuda_advect(int gridSizeX, int gridSizeY, float dt, float4* u, float4* xNew) {
     int index = threadIdx.x + blockIdx.x * blockDim.x;
     int stride = blockDim.x * gridDim.x;
-    float oldx, oldy, dx, dy, mdx, mdy;
+    float rdx, rdy, oldx, oldy, dx, dy, mdx, mdy;
     int xid0, xid1, yid0, yid1;
     for (int i = index; i < gridSizeY * gridSizeX; i += stride) {
         int a = i / gridSizeX;
         int b = i - a * gridSizeX;
         if (a == 0 || a == gridSizeY - 1 || b == 0 || b == gridSizeX - 1) continue;
-        oldx = b - dt * u[a * gridSizeX + b].x * gridSizeX;
-        oldy = a - dt * u[a * gridSizeY + b].y * gridSizeX;
+        oldx = (b+0.5) - dt * u[a * gridSizeX + b].x * gridSizeX;
+        oldy = (a+0.5) - dt * u[a * gridSizeY + b].y * gridSizeX;
         oldx = fmax(0.5f, fmin(gridSizeX-0.5f, oldx));
         oldy = fmax(0.5f, fmin(gridSizeY-0.5f, oldy));
-        xid0 = (int)oldx;
+        rdx = round(oldx);
+        rdy = round(oldy);
+        xid0 = (int)(rdx - 0.5);
         xid1 = xid0 + 1;
-        yid0 = (int)oldy;
+        yid0 = (int)(rdy - 0.5);
         yid1 = yid0 + 1;
-        dx = oldx - xid0;
-        mdx = 1 - dx;
-        dy = oldy - yid0;
-        mdy = 1 - dy;
+        dx = oldx - (rdx - 0.5);
+        mdx = (rdx + 0.5) - oldx;
+        dy = oldy - (rdy - 0.5);
+        mdy = (rdy + 0.5) - oldy;
         xNew[a * gridSizeX + b].x = mdx * (mdy * u[yid0 * gridSizeX + xid0].x + dy * u[yid1 * gridSizeX + xid0].x) + dx * (mdy * u[yid0 * gridSizeX + xid1].x + dy * u[yid1 * gridSizeX + xid1].x);
         xNew[a * gridSizeX + b].y = mdx * (mdy * u[yid0 * gridSizeX + xid0].y + dy * u[yid1 * gridSizeX + xid0].y) + dx * (mdy * u[yid0 * gridSizeX + xid1].y + dy * u[yid1 * gridSizeX + xid1].y);
-        // xNew[a * gridSizeX + b].x = (xNew[a * gridSizeX + b].x / 1.005);
-        // xNew[a * gridSizeX + b].y = (xNew[a * gridSizeX + b].y / 1.005);
     
     }
 }
@@ -163,7 +169,7 @@ void cuda_divergence(int gridSizeX, int gridSizeY, float4* w, float4* div, float
         float wR = w[a * gridSizeX + b + 1].x;
         float wT = w[(a - 1) * gridSizeX + b].y;
         float wB = w[(a + 1) * gridSizeX + b].y;
-        div[a * gridSizeX + b].w = -0.5 * ((wR - wL) + (wB - wT));// / gridSizeX;
+        div[a * gridSizeX + b].w = -0.5 * ((wR - wL) + (wB - wT)) / gridSizeX;
         p[a * gridSizeX + b] = make_float4(0,0,0,0);
     }
 }
@@ -199,8 +205,8 @@ void cuda_subgradient(int gridSizeX, int gridSizeY, float4* p, float4* w, float4
         float4 pB = p[(a + 1) * gridSizeX + b];
 
         uNew[a * gridSizeX + b] = w[a * gridSizeX + b];
-        uNew[a * gridSizeX + b].x -= 0.5 * (pR.z - pL.z);// * gridSizeX;
-        uNew[a * gridSizeX + b].y -= 0.5 * (pB.z - pT.z);// * gridSizeX;
+        uNew[a * gridSizeX + b].x -= 0.5 * (pR.z - pL.z) * gridSizeX;
+        uNew[a * gridSizeX + b].y -= 0.5 * (pB.z - pT.z) * gridSizeX;
     }
 }
 __global__ 
@@ -213,7 +219,7 @@ void Solver::update(float dt, float2 forceOrigin, float2 forceVector, Uint8* pix
     // external force
     cuda_addForce<<< numberofblocks, numberofthreads >>>(gridSizeX, gridSizeY, forceOrigin, forceVector, u, tmp);
     swap(tmp, u);
-    setBoundary << < numberofblocks, numberofthreads >> > (u, -1.0f, gridSizeX, gridSizeY);
+    setBoundary<<< numberofblocks, numberofthreads >>>(u, -1.0f, gridSizeX, gridSizeY);
     // diffussion
     for (int s = 0; s < 10; s++) {
         cuda_jacobi<<< numberofblocks, numberofthreads >>>(gridSizeX, gridSizeY, dt*viscosity*gridSizeX*gridSizeY, 1+4*dt*viscosity*gridSizeX*gridSizeY, u, u, tmp);
@@ -267,25 +273,16 @@ void Solver::update(float dt, float2 forceOrigin, float2 forceVector, Uint8* pix
             pixels[(i * gridSizeX + j) * 4 + 1] = 43;
             pixels[(i * gridSizeX + j) * 4 + 2] = 226;
             float amp = sqrtf(u[i*gridSizeX+ j].x * u[i * gridSizeX + j].x + u[i * gridSizeX + j].y * u[i * gridSizeX + j].y) * 200;
-            pixels[(i * gridSizeX + j) * 4 + 3] = (int) _clampTo_0_1(amp);
+            pixels[(i * gridSizeX + j) * 4 + 3] = (int) clampTo_0_255(amp);
         }
     }
 }
 
-void Solver::print(float4* matrix) {
-    for (int i = 0; i < gridSizeY; i++) {
-        for (int j = 0; j < gridSizeX; j++) {
-            float amp = sqrtf(matrix[i * gridSizeX + j].x * matrix[i * gridSizeX + j].x + matrix[i * gridSizeX + j].y * matrix[i * gridSizeX + j].y);
-            std::cout << std::fixed << std::setprecision(0) << amp;
-        }
-        std::cout << "\n";
-    }
-}
 //main.cpp
 int main()
 {
     int W = 400, H = 400;
-    RenderWindow window(VideoMode(W, H), "test");
+    RenderWindow window(VideoMode(W, H), "stable fluid");
     //window.setFramerateLimit(60);
 
     Uint8* pixels = new Uint8[W * H * 4];
@@ -331,8 +328,7 @@ int main()
                     now_pos = Mouse::getPosition(window);
                     forceOrigin = make_float2(last_pos.x, last_pos.y);
                     forceVector = make_float2(now_pos.x - last_pos.x, now_pos.y - last_pos.y);
-                    last_pos.x = now_pos.x;
-                    last_pos.y = now_pos.y;
+                    last_pos = now_pos;
                 }
                 break;
             default:
