@@ -54,7 +54,7 @@ Solver::Solver(int screenWidth, int screenHeight, int resolution)
     minY = 1.0f;
     maxX = gridSizeX - 1.0f;
     maxY = gridSizeY - 1.0f;
-    viscosity = 1e-6f;
+    viscosity = 0.005;
 }
 
 Solver::~Solver()
@@ -145,8 +145,8 @@ void cuda_advect(int gridSizeX, int gridSizeY, float dt, float4* u, float4* xNew
         mdy = 1 - dy;
         xNew[a * gridSizeX + b].x = mdx * (mdy * u[yid0 * gridSizeX + xid0].x + dy * u[yid1 * gridSizeX + xid0].x) + dx * (mdy * u[yid0 * gridSizeX + xid1].x + dy * u[yid1 * gridSizeX + xid1].x);
         xNew[a * gridSizeX + b].y = mdx * (mdy * u[yid0 * gridSizeX + xid0].y + dy * u[yid1 * gridSizeX + xid0].y) + dx * (mdy * u[yid0 * gridSizeX + xid1].y + dy * u[yid1 * gridSizeX + xid1].y);
-        xNew[a * gridSizeX + b].x = (xNew[a * gridSizeX + b].x / 1.005);
-        xNew[a * gridSizeX + b].y = (xNew[a * gridSizeX + b].y / 1.005);
+        // xNew[a * gridSizeX + b].x = (xNew[a * gridSizeX + b].x / 1.005);
+        // xNew[a * gridSizeX + b].y = (xNew[a * gridSizeX + b].y / 1.005);
     
     }
 }
@@ -163,12 +163,12 @@ void cuda_divergence(int gridSizeX, int gridSizeY, float4* w, float4* div, float
         float wR = w[a * gridSizeX + b + 1].x;
         float wT = w[(a - 1) * gridSizeX + b].y;
         float wB = w[(a + 1) * gridSizeX + b].y;
-        div[a * gridSizeX + b].w = -0.5 * ((wR - wL) + (wT - wB));
+        div[a * gridSizeX + b].w = -0.5 * ((wR - wL) + (wB - wT));// / gridSizeX;
         p[a * gridSizeX + b] = make_float4(0,0,0,0);
     }
 }
 __global__
-void cuda_jacobi(int gridSizeX, int gridSizeY,  float alpha, float rbeta, float4* x, float4* b_, float4* xNew) {
+void cuda_jacobi(int gridSizeX, int gridSizeY,  float alpha, float beta, float4* x, float4* b_, float4* xNew) {
     int index = threadIdx.x + blockIdx.x * blockDim.x;
     int stride = blockDim.x * gridDim.x;
     for (int i = index; i < gridSizeY * gridSizeX; i += stride) {
@@ -181,7 +181,7 @@ void cuda_jacobi(int gridSizeX, int gridSizeY,  float alpha, float rbeta, float4
         float4 xT = x[(a - 1) * gridSizeX + b];
         float4 xB = x[(a + 1) * gridSizeX + b];
         float4 bc = b_[a * gridSizeX + b];
-        xNew[a * gridSizeX + b].z = ((xL.z + xR.z + xT.z + xB.z)*alpha + bc.w) * rbeta;
+        xNew[a * gridSizeX + b].z = ((xL.z + xR.z + xT.z + xB.z)*alpha + bc.w) / beta;
     }
 }
 __global__
@@ -199,13 +199,13 @@ void cuda_subgradient(int gridSizeX, int gridSizeY, float4* p, float4* w, float4
         float4 pB = p[(a + 1) * gridSizeX + b];
 
         uNew[a * gridSizeX + b] = w[a * gridSizeX + b];
-        uNew[a * gridSizeX + b].x -= 0.5 * (pR.z - pL.z);
-        uNew[a * gridSizeX + b].y -= 0.5 * (pT.z - pB.z);
+        uNew[a * gridSizeX + b].x -= 0.5 * (pR.z - pL.z);// * gridSizeX;
+        uNew[a * gridSizeX + b].y -= 0.5 * (pB.z - pT.z);// * gridSizeX;
     }
 }
 __global__ 
 void cuda_print(float4* u) {
-    printf("%f\n", u[200*400+200].x);
+    printf("%f\n", u[200*400+200].z);
 }
 //adect->forceaply->applyDye->divergence->jacobiviscousdiffusion->applygradient
 void Solver::update(float dt, float2 forceOrigin, float2 forceVector, Uint8* pixels) {
@@ -214,36 +214,51 @@ void Solver::update(float dt, float2 forceOrigin, float2 forceVector, Uint8* pix
     cuda_addForce<<< numberofblocks, numberofthreads >>>(gridSizeX, gridSizeY, forceOrigin, forceVector, u, tmp);
     swap(tmp, u);
     setBoundary << < numberofblocks, numberofthreads >> > (u, -1.0f, gridSizeX, gridSizeY);
-    // advect
-    cuda_advect<<< numberofblocks, numberofthreads >>>(gridSizeX, gridSizeY, dt, u, tmp);
-    swap(tmp, u);
-    setBoundary<<< numberofblocks, numberofthreads >>>(u, -1.0f, gridSizeX, gridSizeY);
-    // // diffussion
-    // float alpha = dt*viscosity*gridSizeX*gridSizeY;;
-    // float rBeta = 1/(1+4*alpha);
-    // for (int s = 0; s < 20; s++) {
-    //     cuda_jacobi<<< numberofblocks, numberofthreads >>>(gridSizeX, gridSizeY, alpha, rBeta, u, u, tmp);
-    //     swap(tmp, u);
-    //     setBoundary<<< numberofblocks, numberofthreads >>>(u, -1.0f, gridSizeX, gridSizeY);
-    // }
+    // diffussion
+    for (int s = 0; s < 10; s++) {
+        cuda_jacobi<<< numberofblocks, numberofthreads >>>(gridSizeX, gridSizeY, dt*viscosity*gridSizeX*gridSizeY, 1+4*dt*viscosity*gridSizeX*gridSizeY, u, u, tmp);
+        cuda_jacobi<<< numberofblocks, numberofthreads >>>(gridSizeX, gridSizeY, dt*viscosity*gridSizeX*gridSizeY, 1+4*dt*viscosity*gridSizeX*gridSizeY, tmp, tmp, u);
+        setBoundary<<< numberofblocks, numberofthreads >>>(u, -1.0f, gridSizeX, gridSizeY);
+    }
+    // -------------------- projection start----------------------
     // divergence
     cuda_divergence<<< numberofblocks, numberofthreads >>>(gridSizeX, gridSizeY,  u, div, p);
     setBoundary<<<numberofblocks, numberofthreads >>>(div, 1.0f, gridSizeX, gridSizeY);
     // pressure
-    float alpha = 1;
-    float rBeta = 1/4;
-    for (int s = 0; s < 40; s++) {
-        cuda_jacobi<<< numberofblocks, numberofthreads >>>(gridSizeX, gridSizeY, alpha, rBeta, p, div, tmp);
-        swap(tmp, p);
+    for (int s = 0; s < 20; s++) {
+        cuda_jacobi<<< numberofblocks, numberofthreads >>>(gridSizeX, gridSizeY, 1, 4, p, div, tmp);
+        cuda_jacobi<<< numberofblocks, numberofthreads >>>(gridSizeX, gridSizeY, 1, 4, tmp, div, p);
         setBoundary<<< numberofblocks, numberofthreads >>>(p, 1.0f, gridSizeX, gridSizeY);
     }
     // subGradient
     cuda_subgradient<<< numberofblocks, numberofthreads >>>(gridSizeX, gridSizeY, p, u, tmp);
     swap(tmp, u);
     setBoundary<<< numberofblocks, numberofthreads >>>(u, -1.0f, gridSizeX, gridSizeY);
+    // -------------------- projection end ----------------------
+    // advect
+    cuda_advect<<< numberofblocks, numberofthreads >>>(gridSizeX, gridSizeY, dt, u, tmp);
+    swap(tmp, u);
+    setBoundary<<< numberofblocks, numberofthreads >>>(u, -1.0f, gridSizeX, gridSizeY);
+    // -------------------- projection start----------------------
+    // divergence
+    cuda_divergence<<< numberofblocks, numberofthreads >>>(gridSizeX, gridSizeY,  u, div, p);
+    setBoundary<<<numberofblocks, numberofthreads >>>(div, 1.0f, gridSizeX, gridSizeY);
+    // pressure
+    for (int s = 0; s < 20; s++) {
+        cuda_jacobi<<< numberofblocks, numberofthreads >>>(gridSizeX, gridSizeY, 1, 4, p, div, tmp);
+        cuda_jacobi<<< numberofblocks, numberofthreads >>>(gridSizeX, gridSizeY, 1, 4, tmp, div, p);
+        setBoundary<<< numberofblocks, numberofthreads >>>(p, 1.0f, gridSizeX, gridSizeY);
+    }
+    // subGradient
+    cuda_subgradient<<< numberofblocks, numberofthreads >>>(gridSizeX, gridSizeY, p, u, tmp);
+    swap(tmp, u);
+    setBoundary<<< numberofblocks, numberofthreads >>>(u, -1.0f, gridSizeX, gridSizeY);
+    // -------------------- projection end ----------------------
+
+    // cuda_print<<< 1,1 >>>(p);
     //finish
-    cudaMemPrefetchAsync(u, gridSizeY * gridSizeX * sizeof(float4), deviceId);
     cudaDeviceSynchronize();
+    cudaMemPrefetchAsync(u, gridSizeY * gridSizeX * sizeof(float4), deviceId);
 
     // apply color
     for (int i = 0; i < gridSizeY; i++) {
@@ -251,7 +266,7 @@ void Solver::update(float dt, float2 forceOrigin, float2 forceVector, Uint8* pix
             pixels[(i * gridSizeX + j) * 4] = 138;
             pixels[(i * gridSizeX + j) * 4 + 1] = 43;
             pixels[(i * gridSizeX + j) * 4 + 2] = 226;
-            float amp = sqrtf(u[i*gridSizeX+ j].x * u[i * gridSizeX + j].x + u[i * gridSizeX + j].y * u[i * gridSizeX + j].y) * 255;
+            float amp = sqrtf(u[i*gridSizeX+ j].x * u[i * gridSizeX + j].x + u[i * gridSizeX + j].y * u[i * gridSizeX + j].y) * 200;
             pixels[(i * gridSizeX + j) * 4 + 3] = (int) _clampTo_0_1(amp);
         }
     }
